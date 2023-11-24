@@ -9,48 +9,59 @@ import reframe.utility.sanity as sn
 
 # Import functions to set scheduler and launcher options, compilation flags, and environment variables
 import sys
-sys.path.insert(1, '/software/projects/pawsey0001/cmeyer/Reframe-MPI-Stress-Tests/tests/mpi')
-from test_opts import *
+import os
+sys.path.append(os.getcwd() + '/common/scripts')
+from test_options import *
 
 
 # Base MPI communications test class
 class MPI_Comms_Base(rfm.RegressionTest):
     def __init__(self, name, **kwargs):
 
+        #############################################################
+        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
+        #############################################################
+        self.valid_systems = ['system:work']
+        self.valid_prog_environs = ['*']
+        self.acct_str = 'account' # Account to charge job to
+
         # Metadata
         self.descr = 'Performance scaling test for MPI communcation'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
-        # Valid systems and PEs
-        # NOTE '*' will run on all PEs on system, changing system to '*' will run on all systems in config file
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-
         # Compilation
         self.build_system = 'SingleSource'
         # Set appropriate flags
-        self.build_system.cppflags = set_compiler_flags(iprofile_util = True)
-        # Build script
-        self.prebuild_cmds = ['./copy.sh']
-        # Output MPI environment variables
-        self.prerun_cmds = set_env_vars()
+        self.build_system.cppflags = [
+            '-fopenmp', '-O3', '-D_MPI',
+            '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${PROFILE_UTIL_DIR}/include',
+            '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
+            '-lprofile_util_mpi_omp',
+        ]
+        # Build profile util library used by the source code
+        self.prebuild_cmds = [
+            'MAIN_SRC_DIR=$(pwd)',
+            'cd common/profile_util',
+            './build_cpu.sh',
+            'PROFILE_UTIL_DIR=$(pwd)',
+            'cd ${MAIN_SRC_DIR}'
+        ]
+        # Set up environment (any environment variables to set and/or modules to load)
+        env_vars, modules = set_env(mpi = True)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        if modules != []:
+            self.modules = modules
         # As tests focus on MPI, here the default is 1 thread per MPI process
         self.num_cpus_per_task = 1
         self.keep_files = ['logs/*']
 
-    # Compile profile_util
-    @run_before('compile')
-    def compile_prof_util(self):
-        self.prebuild_cmds += [
-            'cd profile_util', './build_cpu.sh', 'PROFILE_UTIL_DIR=$(pwd)', 'cd ../',
-        ]
-    # Set account for billing and source compilers on Mulan
+
+    # Set job options
     @run_before('run')
-    def setup_env(self):
-        self.job.options = set_job_opts(self.num_nodes)
-        sysname = self.current_system.name
-        if sysname == 'system':
-            self.job.options += ['--account=the-account']
+    def set_job_opts(self):
+        job_opts_dict = {'account': ['--', '=', self.acct_str]}
+        self.job.options = set_job_opts(job_opts_dict)
     # Explicitly set number of CPUs per task in job launcher - NEEDED FOR SLURM
     @run_before('run')
     def set_cpus_per_task(self):
@@ -59,8 +70,8 @@ class MPI_Comms_Base(rfm.RegressionTest):
     # Check node health pre- and post-job
     @run_before('run')
     def check_node_health(self):
-        self.prerun_cmds += ['./node_check.sh',]
-        self.postrun_cmds = ['./node_check.sh',]
+        self.prerun_cmds += ['common/scripts/node_check.sh',]
+        self.postrun_cmds = ['common/scripts/node_check.sh',]
 
     # Test passes if the end of the job is reached
     @sanity_function
@@ -90,11 +101,8 @@ class Pt2Pt(MPI_Comms_Base):
         self.executable_opts = [f'{self.ndata} {self.iadjacent} {self.iblocking} 1 {self.idelay} {self.irandom}']
 
         # Set sbatch script directives
-        self.num_tasks_per_node = 128
+        self.num_tasks_per_node = 24
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
-        # Can decide at what level exclusive access of a node is required
-        if self.num_tasks_per_node == 128:
-            self.exclusive_access = True
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.ref_val = 2e6
@@ -106,7 +114,9 @@ class Pt2Pt(MPI_Comms_Base):
             'system:work': {'Average': (self.ref_val * scaling_factor, None, 0.2)},
         }
 
-    # Parameters
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
     num_nodes = parameter([1, 2, 4, 8, 16, 32])
 
     # Performance function for the recorded time statistics
@@ -141,10 +151,8 @@ class CollectiveComms(MPI_Comms_Base):
         self.executable_opts = [f'{self.ndata} 1']
 
         # Set sbatch script directives
-        self.num_tasks_per_node = 128
+        self.num_tasks_per_node = 24
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
-        if self.num_tasks_per_node == 128:
-            self.exclusive_access = True
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.ref_vals = {
@@ -166,8 +174,10 @@ class CollectiveComms(MPI_Comms_Base):
             },
         }
     
-    # Parameters
-    num_nodes = parameter([1, 2, 4, 8])#, 16, 32])
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
+    num_nodes = parameter([1, 2, 4, 8, 16, 32])
 
     # Return the average, SD, min and max times, and inter-quartile range
     # using the performance function (defined uniquely in each subtest)
@@ -230,28 +240,28 @@ class DelayHang(MPI_Comms_Base):
         self.num_tasks_per_node = 128
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
         self.time_limit = self.delay_time + 60 # Set job time limit to delay + 1 minute
-        if self.num_tasks_per_node == 128:
-            self.exclusive_access = True
     
 
 # Test employing ucx library
 @rfm.simple_test
 class CorrectSends(rfm.RegressionTest):
     def __init__(self):
+        
+        #############################################################
+        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
+        #############################################################
+        self.valid_systems = ['system:work']
+        self.valid_prog_environs = ['*']
+        self.acct_str = 'account' # Account to charge job to
 
         # Metadata
         self.descr = 'Test to check MPI sends are correct'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
-        # Valid systems and PEs
-        # NOTE '*' will run on all PEs on system, changing system to '*' will run on all systems in config file
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-
         # Compilation - source code file
         self.sourcepath = 'misc_tests.cpp'
         self.build_system = 'SingleSource'
-        self.build_system.cppflags = set_compiler_flags(iprofile_util = False)
+        self.build_system.cppflags = ['-fopenmp', '-O3', '-D_MPI']
 
         # Execution - executable and arguments
         self.executable = 'misc_tests.out'
@@ -269,14 +279,24 @@ class CorrectSends(rfm.RegressionTest):
         self.num_nodes = 1
         self.num_tasks = 128
         self.num_cpus_per_task = 1
-        if self.num_tasks == 128:
-            self.exclusive_access = True
+        self.exclusive_access = True
 
-        self.prerun_cmds = set_env_vars()
+        # Set up environment (any environment variables to set and/or modules to load)
+        env_vars, modules = set_env(mpi = True)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        if modules != []:
+            self.modules = modules
 
-    # Parameters
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
     send_mode = parameter(['isend', 'send', 'ssend'])
 
+
+    # Set job options
+    @run_before('run')
+    def set_job_opts(self):
+        self.job.options = set_job_opts(nodes = self.num_nodes, account = self.acct_str)
     # Run many iterations
     @run_before('run')
     def iterate_run(self):
@@ -329,7 +349,9 @@ class LargeCommHang(MPI_Comms_Base):
         self.exclusive_access = True
         self.time_limit = 300 # Set job time limit to 5 minutes
 
-    # Test parameters
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
     ntasks_per_node = parameter([85, 86])
 
 
@@ -338,19 +360,38 @@ class LargeCommHang(MPI_Comms_Base):
 class MemoryLeak(rfm.RegressionTest):
     def __init__(self):
 
+        #############################################################
+        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
+        #############################################################
+        self.valid_systems = ['system:work']
+        self.valid_prog_environs = ['*']
+        self.acct_str = 'account' # Account to charge job to
+
         # Metadata
         self.descr = 'Test memory sampling/reporting during MPI comms'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
-        # Valid systems and PEs
-        # NOTE '*' will run on all PEs on system, changing system to '*' will run on all systems in config file
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-
         # Compilation
         self.sourcepath = 'mpi-comms.cpp'
         self.build_system = 'SingleSource'
-        self.build_system.cppflags = set_compiler_flags(iprofile_util = True)
+        self.build_system.cppflags = [
+            '-fopenmp', '-O3', '-D_MPI',
+            '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${PROFILE_UTIL_DIR}/include',
+            '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
+            '-lprofile_util_mpi_omp',
+        ]
+        # Build profile util library used by the source code
+        self.prebuild_cmds = [
+            'MAIN_SRC_DIR=$(pwd)',
+            'cd common/profile_util',
+            './build_cpu.sh',
+            'PROFILE_UTIL_DIR=$(pwd)',
+            'cd ${MAIN_SRC_DIR}'
+        ]
+        # Compile process tracking program
+        flags_str = ' '.join(self.build_system.cppflags)
+        self.prebuild_cmds += ['CC ' + flags_str + ' get_running_procs.cpp -o get_running_procs.out']
 
         # Executable
         self.executable = 'mpi-comms.out'
@@ -367,52 +408,48 @@ class MemoryLeak(rfm.RegressionTest):
         self.mem_per_node = self.num_tasks_per_node * self.mem_per_cpu
         self.exclusive_access = True
 
-        # Get system memory when on the node without any programs runninng
-        self.prebuild_cmds = ['./copy.sh']
-        self.prerun_cmds = [
-            'rm mem_reports.log',
-            'rm procs_list.txt',
-        ]
-        self.prerun_cmds += set_env_vars()
+        # Set up environment (any environment variables to set and/or modules to load)
+        env_vars, modules = set_env(mpi = True)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        if modules != []:
+            self.modules = modules
 
         # Cadence of memory reporting (in seconds)
         self.cadence = 1.0 
         # Run memory tracking program as a simultaneous job step alongside main MPI comms program
-        self.postrun_cmds = run_simul_job_steps(self.num_nodes, self.num_nodes, 1, 1, self.mem_per_cpu, True)
-        self.postrun_cmds[-1] += f' ./get_running_procs.out {self.cadence} {self.num_tasks - self.num_nodes} >> mem_reports.log &'
-        # Run script to parse memory reports in `mem_reports` and output to self.stdout
-        self.postrun_cmds += [
+        self.postrun_cmds = [
+            f'srun --exact -N {self.num_nodes} -n {self.num_nodes} --ntasks-per-node=1 -c 1 --mem={self.mem_per_cpu} '
+            + f'./get_running_procs.out {self.cadence} {self.num_tasks - self.num_nodes} >> mem_reports.log &', 
             'wait',
-            f'python3 parse_memory.py -n {self.num_tasks} -N {self.num_nodes} -f mem_reports.log'
+            f'python3 parse_memory.py -n {self.num_tasks} -N {self.num_nodes} -f mem_reports.log',
         ]
 
-    # Parameters
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
     num_nodes = parameter([1, 2, 4, 8, 16, 32])
-    ntasks_per_node = parameter([128])
+    ntasks_per_node = parameter([24])
 
-    # Compile `profile_util``
-    @run_before('compile')
-    def compile_prof_util(self):
-        self.prebuild_cmds += [
-            'cd profile_util', './build_cpu.sh', 'PROFILE_UTIL_DIR=$(pwd)', 'cd ../',
-        ]
-    # Compile process tracking program
-    @run_before('compile')
-    def compile_proc_tracker(self):
-        compiler_flags = set_compiler_flags(iprofile_util = True)
-        flags_str = ' '.join(compiler_flags)
-        self.prebuild_cmds += ['CC ' + flags_str + ' get_running_procs.cpp -o get_running_procs.out']
+
     # Modify job launcher options for multiple simultaneous job steps
     @run_before('run')
     def modify_launcher(self):
-        self.job.launcher.options = run_simul_job_steps(self.num_nodes, self.num_tasks - self.num_nodes, self.ntasks_per_node - 1, 1, self.mem_per_node - self.mem_per_cpu, False)
+        self.job.launcher.options = [
+            '--exact', 
+            f'-N {self.num_nodes}', f'-n {self.num_tasks - self.num_nodes}', f'--ntasks-per-node={self.ntasks_per_node - 1}', '-c 1', 
+            f'--mem={self.mem_per_node - self.mem_per_cpu}']
     # Set job options
     @run_before('run')
     def set_job_opts(self):
-        self.job.options = set_job_opts(self.num_nodes, self.mem_per_node)
-        sysname = self.current_system.name
-        if sysname == 'system':
-            self.job.options += ['--account=account']
+        job_opts_dict = {
+            'mem':  ['--', '=', self.mem_per_node],
+            'A':    ['-', ' ', self.acct_str]
+        }
+        self.job.options = set_job_opts(job_opts_dict)
+    @run_before('run')
+    def check_node_health(self):
+        self.prerun_cmds += ['common/scripts/node_check.sh',]
+        self.postrun_cmds += ['common/scripts/node_check.sh',]
     
     # Test passes if the end of the job is reached
     @sanity_function
