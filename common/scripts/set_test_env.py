@@ -1,21 +1,5 @@
 import re
 
-# Set options for job script sent to job scheduler (e.g. SLURM sbatch script)
-# `options` is a dictionary of the format `key`: [`prefix`, `sep`, `value`] where
-# the job option would be specified in the script as {prefix}{key}{sep}{value}
-# e.g. for --account=acct0001 the entry would be 'account': ['--', '=', 'acct0001']
-# e.g. for -N 2 the entry would be 'N': ['-', ' ', '2']
-def set_job_opts(options):
-
-    job_opts = []
-
-    for key, value in options.items():
-        prefix = value[0]
-        sep = value[1]
-        val = value[2]
-        job_opts += [f'{prefix}{key}{sep}{val}']
-    
-    return job_opts
 
 # Populate lists with entries from test environment config file
 def add_to_env(lines, env_str, mod_str, cmd_str, env_vars, modules, cmds):

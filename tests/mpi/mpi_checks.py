@@ -62,14 +62,17 @@ class MPI_Comms_Base(rfm.RegressionTest):
         self.keep_files = ['logs/*']
 
 
-    # Set job options
+    ###########################
+    # RECOMMENDED JOB OPTIONS #
+    ###########################
+    # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
+    # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
-    def set_job_options(self):
-        job_opts_dict = {
-            'account': ['--', '=', self.acct_str],
-            'nodes': ['--', '=', self.num_nodes]
-        }
-        self.job.options = set_job_opts(job_opts_dict)
+    def set_job_opts(self):
+        self.job.options = [
+            f'--account={self.acct_str}',
+            f'--nodes{self.num_nodes}'
+        ]
     # Explicitly set number of CPUs per task in job launcher - NEEDED FOR SLURM
     @run_before('run')
     def set_cpus_per_task(self):
@@ -304,14 +307,17 @@ class CorrectSends(rfm.RegressionTest):
     send_mode = parameter(['isend', 'send', 'ssend'])
 
 
-    # Additional job options not automatically set by ReFrame
+    ###########################
+    # RECOMMENDED JOB OPTIONS #
+    ###########################
+    # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
+    # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
-    def set_job_options(self):
-        job_opts_dict = {
-            'nodes': ['--', '=', self.num_nodes],
-            'account': ['--', '=', 'pawsey0001']
-        }
-        self.job.options = set_job_opts(job_opts_dict)
+    def set_job_opts(self):
+        self.job.options = [
+            f'--account={self.acct_str}',
+            f'--nodes={self.num_nodes}'
+        ]
     # Run many iterations
     @run_before('run')
     def iterate_run(self):
@@ -464,15 +470,18 @@ class MemoryLeak(rfm.RegressionTest):
             f'-N {self.num_nodes}', f'-n {self.num_tasks - self.num_nodes}', f'--ntasks-per-node={self.ntasks_per_node - 1}',
             f'-c {self.num_cpus_per_task}', f'--mem={self.mem_per_node - self.mem_per_cpu}'
         ]
-    # Set job options
+    ###########################
+    # RECOMMENDED JOB OPTIONS #
+    ###########################
+    # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
+    # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
-    def set_job_options(self):
-        job_opts_dict = {
-            'mem':  ['--', '=', self.mem_per_node],
-            'account':    ['--', '=', self.acct_str],
-            'nodes': ['--', '=', self.num_nodes]
-        }
-        self.job.options = set_job_opts(job_opts_dict)
+    def set_job_opts(self):
+        self.job.options = [
+            f'--mem={self.mem_per_node}',
+            f'--account={self.acct_str}',
+            f'--nodes={self.num_nodes}',
+        ]
     @run_before('run')
     def check_node_health(self):
         self.prerun_cmds += ['common/scripts/node_check.sh',]
