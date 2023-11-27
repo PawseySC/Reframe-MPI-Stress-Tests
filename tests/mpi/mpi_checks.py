@@ -11,7 +11,7 @@ import reframe.utility.sanity as sn
 import sys
 import os
 sys.path.append(os.getcwd() + '/common/scripts')
-from test_options import *
+from set_test_env import *
 
 
 # Base MPI communications test class
@@ -23,7 +23,7 @@ class MPI_Comms_Base(rfm.RegressionTest):
         #############################################################
         self.valid_systems = ['system:work']
         self.valid_prog_environs = ['*']
-        self.acct_str = 'account' # Account to charge job to
+        self.acct_str = 'account_name' # Account to charge job to
 
         # Metadata
         self.descr = 'Performance scaling test for MPI communcation'
@@ -47,20 +47,28 @@ class MPI_Comms_Base(rfm.RegressionTest):
             'PROFILE_UTIL_DIR=$(pwd)',
             'cd ${MAIN_SRC_DIR}'
         ]
-        # Set up environment (any environment variables to set and/or modules to load)
-        env_vars, modules = set_env(mpi = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        if modules != []:
-            self.modules = modules
         # As tests focus on MPI, here the default is 1 thread per MPI process
         self.num_cpus_per_task = 1
+        iomp = True if self.num_cpus_per_task > 1 else False
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        env_vars, modules, cmds = set_env(mpi = True, omp = iomp)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        if modules != []:
+            self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
+        # Keep log files from node check
         self.keep_files = ['logs/*']
 
 
     # Set job options
     @run_before('run')
-    def set_job_opts(self):
-        job_opts_dict = {'account': ['--', '=', self.acct_str]}
+    def set_job_options(self):
+        job_opts_dict = {
+            'account': ['--', '=', self.acct_str],
+            'nodes': ['--', '=', self.num_nodes]
+        }
         self.job.options = set_job_opts(job_opts_dict)
     # Explicitly set number of CPUs per task in job launcher - NEEDED FOR SLURM
     @run_before('run')
@@ -252,7 +260,7 @@ class CorrectSends(rfm.RegressionTest):
         #############################################################
         self.valid_systems = ['system:work']
         self.valid_prog_environs = ['*']
-        self.acct_str = 'account' # Account to charge job to
+        self.acct_str = 'account_name' # Account to charge job to
 
         # Metadata
         self.descr = 'Test to check MPI sends are correct'
@@ -277,15 +285,18 @@ class CorrectSends(rfm.RegressionTest):
 
         # sbatch script directives
         self.num_nodes = 1
-        self.num_tasks = 128
+        self.num_tasks = 24
         self.num_cpus_per_task = 1
-        self.exclusive_access = True
 
-        # Set up environment (any environment variables to set and/or modules to load)
-        env_vars, modules = set_env(mpi = True)
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        iomp = True if self.num_cpus_per_task > 1 else False
+        env_vars, modules, cmds = set_env(mpi = True, omp = iomp)
         self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
         if modules != []:
             self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
 
     ###########################################
     # SET PARAMETER(S) TO YOUR DESIRED VALUES #
@@ -293,10 +304,14 @@ class CorrectSends(rfm.RegressionTest):
     send_mode = parameter(['isend', 'send', 'ssend'])
 
 
-    # Set job options
+    # Additional job options not automatically set by ReFrame
     @run_before('run')
-    def set_job_opts(self):
-        self.job.options = set_job_opts(nodes = self.num_nodes, account = self.acct_str)
+    def set_job_options(self):
+        job_opts_dict = {
+            'nodes': ['--', '=', self.num_nodes],
+            'account': ['--', '=', 'pawsey0001']
+        }
+        self.job.options = set_job_opts(job_opts_dict)
     # Run many iterations
     @run_before('run')
     def iterate_run(self):
@@ -311,6 +326,11 @@ class CorrectSends(rfm.RegressionTest):
     def set_cpus_per_task(self):
         if self.job.scheduler.registered_name in ['slurm', 'squeue']:
             self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
+    # Check node health pre- and post-job
+    @run_before('run')
+    def check_node_health(self):
+        self.prerun_cmds += ['common/scripts/node_check.sh',]
+        self.postrun_cmds = ['common/scripts/node_check.sh',]
     
     # Test passes if the end of the job is reached
     @sanity_function
@@ -365,7 +385,7 @@ class MemoryLeak(rfm.RegressionTest):
         #############################################################
         self.valid_systems = ['system:work']
         self.valid_prog_environs = ['*']
-        self.acct_str = 'account' # Account to charge job to
+        self.acct_str = 'account_name' # Account to charge job to
 
         # Metadata
         self.descr = 'Test memory sampling/reporting during MPI comms'
@@ -404,21 +424,26 @@ class MemoryLeak(rfm.RegressionTest):
         # and `--ntasks` in sbatch script
         self.num_tasks_per_node = self.ntasks_per_node
         self.num_tasks = self.num_tasks_per_node * self.num_nodes
+        self.num_cpus_per_task = 1
         self.mem_per_cpu = 1840 # Set to DefMemPerCPU
         self.mem_per_node = self.num_tasks_per_node * self.mem_per_cpu
         self.exclusive_access = True
 
-        # Set up environment (any environment variables to set and/or modules to load)
-        env_vars, modules = set_env(mpi = True)
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        iomp = True if self.num_cpus_per_task > 1 else False
+        env_vars, modules, cmds = set_env(mpi = True, omp = iomp)
         self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
         if modules != []:
             self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
 
         # Cadence of memory reporting (in seconds)
         self.cadence = 1.0 
         # Run memory tracking program as a simultaneous job step alongside main MPI comms program
         self.postrun_cmds = [
-            f'srun --exact -N {self.num_nodes} -n {self.num_nodes} --ntasks-per-node=1 -c 1 --mem={self.mem_per_cpu} '
+            f'srun --exact -N {self.num_nodes} -n {self.num_nodes} --ntasks-per-node=1 -c {self.num_cpus_per_task} --mem={self.mem_per_cpu} '
             + f'./get_running_procs.out {self.cadence} {self.num_tasks - self.num_nodes} >> mem_reports.log &', 
             'wait',
             f'python3 parse_memory.py -n {self.num_tasks} -N {self.num_nodes} -f mem_reports.log',
@@ -436,14 +461,16 @@ class MemoryLeak(rfm.RegressionTest):
     def modify_launcher(self):
         self.job.launcher.options = [
             '--exact', 
-            f'-N {self.num_nodes}', f'-n {self.num_tasks - self.num_nodes}', f'--ntasks-per-node={self.ntasks_per_node - 1}', '-c 1', 
-            f'--mem={self.mem_per_node - self.mem_per_cpu}']
+            f'-N {self.num_nodes}', f'-n {self.num_tasks - self.num_nodes}', f'--ntasks-per-node={self.ntasks_per_node - 1}',
+            f'-c {self.num_cpus_per_task}', f'--mem={self.mem_per_node - self.mem_per_cpu}'
+        ]
     # Set job options
     @run_before('run')
-    def set_job_opts(self):
+    def set_job_options(self):
         job_opts_dict = {
             'mem':  ['--', '=', self.mem_per_node],
-            'A':    ['-', ' ', self.acct_str]
+            'account':    ['--', '=', self.acct_str],
+            'nodes': ['--', '=', self.num_nodes]
         }
         self.job.options = set_job_opts(job_opts_dict)
     @run_before('run')
