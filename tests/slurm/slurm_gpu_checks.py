@@ -35,7 +35,7 @@ class gpu_count_check(rfm.RunOnlyRegressionTest):
         self.executable_opts = ['hello world']
         
         # Set command to list all GPUs available to the job
-        _, _, cmds = set_env(mpi = False, gpu = True)
+        _, _, cmds = set_env(mpi = False, sched = True, gpu = True)
         if cmds != []:
             self.postrun_cmds = cmds
 
@@ -403,9 +403,9 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
         #############################################################
         # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
         #############################################################
-        self.valid_systems = ['setonix:gpu']
+        self.valid_systems = ['system:gpu']
         self.valid_prog_environs = ['PrgEnv-gnu']
-        self.acct_str = 'pawsey0001-gpu' # Account to charge job to
+        self.acct_str = 'account_name' # Account to charge job to
         self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
         self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
         self.mem_per_gpu = 29440 # Memory per GPU in MB
