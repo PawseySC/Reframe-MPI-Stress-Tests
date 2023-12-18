@@ -73,7 +73,7 @@ class MPI_Comms_Base(rfm.RegressionTest):
             f'--account={self.acct_str}',
             f'--nodes{self.num_nodes}'
         ]
-    # Explicitly set number of CPUs per task in job launcher - NEEDED FOR SLURM
+    # Explicitly set cpus_per_task in job launcher call - NEEDED FOR SLURM > 21.08 since sbatch option not passed to srun
     @run_before('run')
     def set_cpus_per_task(self):
         if self.job.scheduler.registered_name in ['slurm', 'squeue']:
@@ -111,15 +111,13 @@ class Pt2Pt(MPI_Comms_Base):
         self.irandom = 0 # Don't randomise order of processes
         self.executable_opts = [f'{self.ndata} {self.iadjacent} {self.iblocking} 1 {self.idelay} {self.irandom}']
 
-        # Set sbatch script directives
+        # Job options
         self.num_tasks_per_node = 24
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.ref_val = 2e6
         # Dictionary holding the reference values to use in the performance test
-        # Adjust calculation of scaling depending on varying parameter
-        # NOTE: Scaling factor still needs some tuning
         scaling_factor = 1 / self.num_nodes if self.num_nodes > self.num_tasks_per_node else 1 / self.num_tasks_per_node
         self.reference = {
             'system:work': {'Average': (self.ref_val * scaling_factor, None, 0.2)},
@@ -161,7 +159,7 @@ class CollectiveComms(MPI_Comms_Base):
         self.ndata = 100
         self.executable_opts = [f'{self.ndata} 1']
 
-        # Set sbatch script directives
+        # Job options
         self.num_tasks_per_node = 24
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
 
@@ -173,9 +171,7 @@ class CollectiveComms(MPI_Comms_Base):
             'reduce': 6e3,
         }
         # Dictionary holding the reference values to use in the performance test
-        # Adjust calculation of scaling depending on varying parameter
         scaling_factor = 1 / self.num_nodes if self.num_nodes > self.num_tasks_per_node else 1 / self.num_tasks_per_node
-        # NOTE: These still need to be adjusted, as does above scaling factor
         self.reference = {
             'system:work': {
                 'bcast_Average': (self.ref_vals['bcast'] * scaling_factor, None, 0.2),
@@ -246,7 +242,7 @@ class DelayHang(MPI_Comms_Base):
         self.delay_time = 600 # seconds
         self.executable_opts = [f'{self.ndata} HANGING {self.delay_rank} {self.delay_time}']
 
-        # sbatch script directives
+        # Job options
         self.num_nodes = 2
         self.num_tasks_per_node = 128
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
@@ -286,7 +282,7 @@ class CorrectSends(rfm.RegressionTest):
         # Needed for ucx module(s) to work properly
         # self.prebuild_cmds = ['module unload xpmem']
 
-        # sbatch script directives
+        # Job options
         self.num_nodes = 1
         self.num_tasks = 24
         self.num_cpus_per_task = 1
@@ -368,7 +364,7 @@ class LargeCommHang(MPI_Comms_Base):
         self.irandom = 0 # Don't randomise order of ranks
         self.executable_opts = [f'{self.ndata} {self.iadjacent} {self.iblocking} 1 {self.idelay} {self.irandom}']
 
-        # sbatch script directives
+        # Job options
         self.num_nodes = 4
         self.num_tasks_per_node = self.ntasks_per_node
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
@@ -425,9 +421,7 @@ class MemoryLeak(rfm.RegressionTest):
         self.executable_opts = [f'{self.ndata} 1 >> mem_reports.log &']
         self.keep_files = ['logs/*']
 
-        # Job batch resource allocation specifications
-        # Sets `--cpus-per-task`, `--ntasks-per-node`,
-        # and `--ntasks` in sbatch script
+        # Job options
         self.num_tasks_per_node = self.ntasks_per_node
         self.num_tasks = self.num_tasks_per_node * self.num_nodes
         self.num_cpus_per_task = 1

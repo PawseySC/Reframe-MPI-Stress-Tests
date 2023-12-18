@@ -238,7 +238,7 @@ class multigpu_check(rfm.RunOnlyRegressionTest):
 
         # Metadata
         self.descr = 'Test performance with multiple GPUs using test from performance-modelling-tools repo'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
         #############################################################
         # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #

@@ -105,7 +105,7 @@ class gpu_copy_check(gpu_mpi_comms_base_check):
 
         # Metadata
         self.description = 'Test for device MPI GPU -> GPU copy'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.scaling_factor = 1 + self.ngpus_per_node / 8
@@ -162,7 +162,7 @@ class gpu_sendrecv_check(gpu_mpi_comms_base_check):
 
         # Metadata
         self.description = 'Performance (bandwidth) test for GPU MPI single send/recv operations'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
     # Set dictionary of performance metrics
     @run_before('performance')
@@ -236,7 +236,7 @@ class gpu_correct_sendrecv_check(gpu_mpi_comms_base_check):
 
         # Metadata
         self.description = 'Test to check correctness of data through GPU MPI single send/recv operations'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
 
     # Test passes if the end of the job is reached and sends/recvs are correct
@@ -256,7 +256,7 @@ class gpu_allreduce_check(gpu_mpi_comms_base_check):
 
         # Metadata
         self.description = 'Test to check GPU MPI all-reduce operation'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.scaling_factor = 1 + self.ngpus_per_node / 8
@@ -314,7 +314,7 @@ class gpu_async_sendrecv_check(gpu_mpi_comms_base_check):
 
         # Metadata
         self.description = 'Test to check GPU MPI asynchronous send/recv operation'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
         # Reference value when run with base conditions (one node, one task, etc.)
         self.scaling_factor = self.ngpus_per_node
