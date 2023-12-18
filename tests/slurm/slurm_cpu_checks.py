@@ -469,7 +469,7 @@ class omp_thread_check(rfm.RegressionTest):
 
         # Metadata
         self.descr = 'Test that number of OMP threads available equals no. of CPUs requested'
-        self.maintainers = ['Craig']
+        self.maintainers = ['Craig Meyer']
 
         #############################################################
         # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
@@ -847,3 +847,47 @@ class het_job_test(rfm.RegressionTest):
             return sn.assert_found('Ending job', 'hetjob.log')
         elif self.mode == 'multiprog':
             return sn.assert_found('Ending job', 'mpi-multiprog.log')
+
+
+@rfm.simple_test
+class accounting_check(rfm.RunOnlyRegressionTest):
+    def __init__(self):
+
+        #############################################################
+        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
+        #############################################################
+        self.valid_systems = ['system:work']
+        self.valid_prog_environs = ['*']
+        self.acct_str = 'account_name'
+
+        # Execution - sleep for 2 minutes
+        self.executable = 'sleep'
+        self.executable_opts = ['120s']
+
+        # Job options
+        self.num_tasks = 12
+        self.num_cpus_per_task = 1
+        self.time_limit = '5m'
+
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
+        env_vars, modules, cmds = set_env(mpi = False, sched = True)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        if modules != []:
+            self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
+
+        # Extract job accounting information with sacct
+        self.postrun_cmds = ['sacct -X --name rfm_accounting_check_job --format=CPUTimeRaw | grep -v batch | awk \'{sum=$1}END{print sum/3600/2}\'']
+
+
+    @run_before('run')
+    def set_job_opts(self):
+        self.job.options = [
+            '--nodes=1',
+            f'--account={self.acct_str}'
+        ]
+
+    @sanity_function
+    def assert_correct_accounting(self):
+        return sn.assert_found(r'0.4', self.stdout)

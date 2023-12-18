@@ -6,6 +6,8 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
 
+from math import floor
+
 # Import functions to set environment variables, etc.
 import sys
 import os
@@ -530,3 +532,75 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
                 result = False
         
         return sn.assert_true(result)
+
+
+@rfm.simple_test
+class gpu_accounting_check(rfm.RunOnlyRegressionTest):
+    def __init__(self):
+
+        # Metadata
+        self.descr = 'Test to check the SLURM accounting for GPU jobs'
+        self.maintainers = ['Craig Meyer']
+
+        #############################################################
+        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
+        #############################################################
+        self.valid_systems = ['system:gpu']
+        self.valid_prog_environs = ['*']
+        self.acct_str = 'account_name'
+        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
+        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+
+        # Execution - sleep for 3 minutes
+        self.executable = 'sleep'
+        self.runtime = 180
+        self.executable_opts = [f'{self.runtime}s']
+
+        # Job options
+        if self.ngpus == self.exclusive_gpus_per_node:
+            self.exclusive_access = True
+        self.num_tasks = self.ngpus
+        self.num_cpus_per_task = 1
+
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
+        env_vars, modules, cmds = set_env(mpi = False, sched = True)
+        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        if modules != []:
+            self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
+
+        # Number of CPUs SLURM will charge given resource request (8 CPUs per GPU, 2 cores per CPU)
+        self.ncpus = self.ngpus * self.cpus_per_gpu * 2
+        # Pre-decimal Value output from `sacct` command, given runtime and conversion from seconds to hours
+        self.val = floor(self.runtime * self.ncpus / 3600 / 2 * 10) / 10
+        self.time_limit = '5m'
+
+        # Extract job accounting information with sacct
+        self.postrun_cmds = ['sacct -X -j $SLURM_JOB_ID --partition=gpu --format=CPUTimeRaw | grep -v batch | awk \'{sum=$1}END{print sum/3600/2}\'']
+        
+
+    ###########################################
+    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
+    ###########################################
+    # Test exclusive, shared and single-/multi-gpu
+    ngpus = parameter([1, 2, 8])
+    
+    ###########################
+    # RECOMMENDED JOB OPTIONS #
+    ###########################
+    @run_before('run')
+    def set_job_opts(self):
+        self.job.options = [
+            '--nodes=1',
+            f'--gres=gpu:{self.ngpus}',
+            f'--account={self.acct_str}',
+        ]
+
+    @run_before('run')
+    def set_srun_opts(self):
+        self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
+    
+    @sanity_function
+    def assert_account_charge(self):
+        return sn.assert_found(f'{self.val}', self.stdout)

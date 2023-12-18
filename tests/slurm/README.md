@@ -48,6 +48,10 @@ This test is designed to check that various workflows for heterogeneous job subm
 
 The test parameter for this test controls the mode of heterogeneous job submission and should not need to be modified at all. The job options and executable options are also specifically set so we recommend **NOT** modifying the job options. However, like all the other tests here, the code block immediately follwing `THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET` will need to be set.
 
+### `accounting_check`
+
+This test checks that SLURM accounting is being calculated corectly. It runs a simple job which simply sleeps for a certain amount of time (default 2 minutes) and then check that the accounting from `sacct` matches what it should given the job's resource allocation request.
+
 ## `slurm_gpu_checks.py`
 
 ### `gpu_count_check`
@@ -69,3 +73,7 @@ This test is mostly the same as `gpu_affinity_check` except that the job is not 
 ### `gpu_affinity_job_packing_check`
 
 Analogous to `gpu_affinity_array_check`, except now the job utilises job packing via job steps. The code following `THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET` needs to be set. All job options can be modified, as can the test parameter `job_config`, which sets the number of nodes, the number of GPUs per node for each of the two job steps, and the number of GPUs per task.
+
+### `gpu_accounting_check`
+
+This test checks that SLURM accounting is being calculated corectly on GPU nodes. It runs a simple job which simply sleeps for a certain amount of time (default 3 minutes) and then check that the accounting from `sacct` matches what it should given the job's resource allocation request.
