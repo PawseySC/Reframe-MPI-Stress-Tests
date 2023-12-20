@@ -1,0 +1,120 @@
+buildtype ?= omp
+DEFS = -DUSEOPENMP
+OPTFLAGS = -O2
+CXXFLAGS = -fPIC -std=c++17 $(OPTFLAGS) -fopenmp
+CXX = gcc
+
+
+ifeq ($(buildtype), hip)
+CXX = hipcc
+CXXFLAGS = -fPIC -std=c++14 $(OPTFLAGS) --offload-arch=gfx90a
+DEFS = -DUSEHIP 
+endif
+
+ifeq ($(buildtype), hipomp)
+CXX = hipcc
+#OPTFLAGS += -I/opt/cray/pe/cce/15.0.1/cce/x86_64/include/craylibs -I/opt/rocm/include
+CXXFLAGS = -std=c++17 -fPIC $(OPTFLAGS) -fopenmp --offload-arch=gfx90a -fopenmp-targets=amdgcn-amd-amdhsa -Xopenmp-target=amdgcn-amd-amdhsa -march=gfx90a
+#DEFS = -D__HIP_PLATFORM_AMD__
+endif
+
+ifeq ($(buildtype), hipacc)
+CXX = hipcc
+OPTFLAGS += -I/opt/cray/pe/cce/15.0.1/cce/x86_64/include/craylibs -I/opt/rocm/include
+CXXFLAGS = -std=c++14 -fPIC $(OPTFLAGS) --offload-arch=gfx90a
+DEFS = -D_OPENACC
+endif
+
+ifeq ($(buildtype), omp)
+CXX = amdclang++
+CXXFLAGS = -fPIC -std=c++14 $(OPTFLAGS) -fopenmp -fopenmp-targets=amdgcn-amd-amdhsa -Xopenmp-target=amdgcn-amd-amdhsa -march=gfx90a
+endif
+
+ifeq ($(buildtype), acc)
+CXX = g++
+CXXFLAGS = -fPIC -std=c++14 $(OPTFLAGS) -fopenacc
+endif
+
+CXXFLAGS += $(DEFS)
+PROFUTILDIR = $(shell pwd)/common/performance-modelling-tools/tests/profile_util
+INCDIR = -I$(PROFUTILDIR)/include/ #-Iinclude/
+LDFLAGS = -L$(PROFUTILDIR)/lib/
+LIBS = -lprofile_util_$(buildtype)
+ifeq ($(buildtype), hipacc)
+LDFLAGS += -L/opt/cray/pe/gcc-libs/
+LIBS += -lgomp
+endif
+
+# Target executable name:
+EXE = warm_up_test.$(buildtype).exe
+
+TESTDIR = $(shell pwd)/common/performance-modelling-tools/tests/warmup
+INCDIR += -I$(TESTDIR)/include/
+OBJS = $(TESTDIR)/obj/main.o \
+$(TESTDIR)/obj/logger.o \
+$(TESTDIR)/obj/WarmupGPU.o \
+
+.PHONY: libprofile_util $(EXE)
+
+all : libprofile_util $(EXE) 
+
+BLUE='\034[0;31m'
+NC='\033[0m' # No Color
+
+libprofile_util:
+	@echo "Making profile_util library" ;
+	$(MAKE) bt=$(buildtype) -C $(PROFUTILDIR)/ COMPILER=$(CXX) CXXFLAGS="$(CXXFLAGS)"; 
+	cp $(PROFUTILDIR)/lib/libprofile_util.so $(PROFUTILDIR)/lib/libprofile_util_$(buildtype).so 
+
+$(EXE) : $(OBJS)
+	@echo "Making $(EXE) " ;
+	$(CXX) $(CXXFLAGS) $(INCDIR) $(OBJS) $(LDFLAGS) -o $@ $(LIBS)
+	@echo "To run code ensure that you add the following to the environment"
+	@echo -e "export LD_LIBRARY_PATH=$(PROFUTILDIR)/lib/:\044LD_LIBRARY_PATH"
+
+
+ifeq ($(buildtype), hipomp)
+$(TESTDIR)/obj/WarmupGPU.o: $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/include/*.h 
+	cp $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/src/WarmupGPU.cpp ;
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $(TESTDIR)/src/WarmupGPU.cpp -o $(TESTDIR)/obj/WarmupGPU.o ;
+	rm $(TESTDIR)/src/WarmupGPU.cpp ;
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cpp $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+endif
+ifeq ($(buildtype), hipacc)
+$(TESTDIR)/obj/WarmupGPU.o: $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/include/*.h 
+	cp $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/src/WarmupGPU.cpp ;
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $(TESTDIR)/src/WarmupGPU.cpp -o $(TESTDIR)/obj/WarmupGPU.o ;
+	rm $(TESTDIR)/src/WarmupGPU.cpp ;
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cpp $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+endif
+ifeq ($(buildtype), omp)
+$(TESTDIR)/obj/WarmupGPU.o: $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/include/*.h 
+	cp $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/src/WarmupGPU.cpp ;
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $(TESTDIR)/src/WarmupGPU.cpp -o $(TESTDIR)/obj/WarmupGPU.o ;
+	rm $(TESTDIR)/src/WarmupGPU.cpp ;
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cpp $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+endif
+ifeq ($(buildtype), acc)
+$(TESTDIR)/obj/WarmupGPU.o: $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/include/*.h 
+	cp $(TESTDIR)/src/WarmupGPU.cu $(TESTDIR)/src/WarmupGPU.cpp ;
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $(TESTDIR)/src/WarmupGPU.cpp -o $(TESTDIR)/obj/WarmupGPU.o ;
+	rm $(TESTDIR)/src/WarmupGPU.cpp ;
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cpp $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+endif
+ifeq ($(buildtype), hip)
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cpp $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+$(TESTDIR)/obj/%.o: $(TESTDIR)/src/%.cu $(TESTDIR)/include/*.h 
+	$(CXX) $(CXXFLAGS) $(INCDIR) -c $< -o $@
+endif
+
+
+
+clean:
+	rm -f $(OBJS) $(EXE)
+	$(MAKE) -C $(PROFUTILDIR)/ clean  
+	
