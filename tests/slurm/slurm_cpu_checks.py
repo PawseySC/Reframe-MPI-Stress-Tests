@@ -8,13 +8,19 @@ import os
 import reframe as rfm
 import reframe.utility.sanity as sn
 import reframe.utility.udeps as udeps
+
 from math import ceil
 
-# Import functions to set environment variables, etc.
 import sys
-import os
-sys.path.append(os.getcwd() + '/common/scripts')
-from set_test_env import *
+import os.path
+
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
+# Import functions to set env vars, modules, commands
+from common.scripts.set_test_env import *
 
 @rfm.simple_test
 class MemoryCompileTest(rfm.CompileOnlyRegressionTest):

@@ -1,4 +1,12 @@
 import re
+import sys
+import os.path
+
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
 
 
 # Populate lists with entries from test environment config file
@@ -24,7 +32,7 @@ def set_env(mpi = True, omp = False, sched = False, gpu = False):
 
     # Memory and environment reporting variables for Cray-MPICH
     # Edit file if needed for your site/setup
-    config_file = 'setup_files/test_env.config'
+    config_file = root_dir + '/setup_files/test_env.config'
     # Lists to hold env vars, modules, and commands
     env_vars = []
     modules = []
