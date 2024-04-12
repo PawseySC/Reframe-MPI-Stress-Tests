@@ -6,15 +6,27 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
 
-# Base test class
-class OptimiseBase(rfm.CompileOnlyRegressionTest, pin_prefix = True):
-    def __init__(self, name, **kwargs):
+import sys
+import os.path
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
+# Import functions to set env vars, modules, commands
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/cpu_compilation_config.yaml'
+
+
+@rfm.simple_test
+class countOptimisations(rfm.CompileOnlyRegressionTest):
+    def __init__(self):
+
+        sys_info = set_system(config_path, 'countInstructions')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Metadata
         self.descr = 'Base test class for analysing compiler optimisations'
@@ -22,111 +34,51 @@ class OptimiseBase(rfm.CompileOnlyRegressionTest, pin_prefix = True):
 
         # Setup depends on what system we are on
         self.sysname = self.current_system.name
+        test_config = configure_test(config_path, 'countOptimisations')
+        self.ofile_flag = test_config['system-parameters']['ofile-flag']
 
         # Setup for compile-time
         # We build `sourcepath`, creating an optimisation file `self.ofile`
         self.build_system = 'SingleSource'
         self.sourcepath = 'vec_calc.cpp'
         self.ofile = 'vec_calc.lst'
-
-        ##########################################################
-        # MAY NEED TO BE EDITED DEPENDING ON COMPILER BEING USED #
-        ##########################################################
-        self.cppflags = {
-                'setonix': [f'-{self.oflag}', f'-march={self.arch}'],
-            }
+        self.build_system.cppflags = [
+            self.oflag,
+            self.arch,
+            self.ompflag, self.mpiflag,
+            f'{self.ofile_flag}={self.ofile}'
+        ]
 
         # Keep optimisation file produced from compilation
         self.keep_files = [f'{self.ofile}']
 
-        # Compilation flags - includes flags to save optimisation file
-        # which differ depending on the compiler/PE being used
-        self.iflags = {}
-        for env in self.valid_prog_environs:
-            if 'gnu' in env:
-                self.iflags[env] = f'-fopt-info-all={self.ofile}'
-            #elif ('cray' in env) or ('aocc' in env):
-            else:
-                self.iflags[env] = f'-foptimization-record-file={self.ofile}'
-
-
         # Dictionary of optimisations and their corresponding strings
         # based on which compiler is being used
-        self.opt_strings = {
-            'Vectorise': {},
-            'Unroll': {},
+        self.ref_val = test_config['performance']['reference-value']
+        self.reference = {
+            self.sysname: {self.opt_string: (self.ref_val, 0, None, 'counts')}
         }
-        for env in self.valid_prog_environs:
-            if 'gnu' in env:
-                self.opt_strings['Vectorise'][env] = 'loop vectorized'
-                self.opt_strings['Unroll'][env] = 'unroll'
-            #elif ('cray' in env) or ('aocc' in env):
-            else:
-                self.opt_strings['Vectorise'][env] = 'vectorized loop'
-                self.opt_strings['Unroll'][env] = 'unrolled loop'
+        self.perf_variables = {self.opt_string: self.count_opts()}
 
     
-    # Parameterise the test with nultiple/different optimisation levels,
-    # architectures, and target instruction strings (in the assembly code)
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    oflag = parameter()
-    arch = parameter()
-    ompflags = parameter(['', '-fopenmp'])
-    mpiflags = parameter(['', '-D_MPI'])
-
-    # Set the compile flags that are the same for each child test
-    @run_before('compile')
-    def set_cppflags(self):
-        self.build_system.cppflags = [self.iflags[self.current_environ.name]]
-        self.build_system.cppflags += [self.ompflags]
-        self.build_system.cppflags += [self.mpiflags]
-        if self.sysname == 'mulan':
-            self.prebuild_cmds = self.source_cmds[self.curent_environ.name]
-        self.build_system.cppflags += self.cppflags[self.current_system.name]
-        
-# Test for tallying the total number of a given optimisation in an optimisation file
-@rfm.simple_test
-class countOptimisations(OptimiseBase):
-    def __init__(self, **kwargs):
-        super().__init__('countOptimisations', **kwargs)
-
-        # # Performance reference values dictionary
-        # self.reference = {
-        #     'system:work': {'Vectorise': (1 -0.05, None. 'counts')},
-        #     'system:work': {'Unroll': (1, -0.05, None, 'counts')}
-        # }
-
-    # Parameterise the test with nultiple/different optimisation levels,
-    # architectures, and target instruction strings (in the assembly code)
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    oflag = parameter(['O0', 'O1', 'O2', 'O3'])
-    arch = parameter(['x86-64', 'znver3'])
-    opts = parameter(['Vectorise', 'Unroll'])
-
-    # @run_before('performance')
-    # def set_perf_variables(self):
-    #     self.perf_var
+    # Test parameters
+    params = get_test_params(config_path, 'countOptimisations')
+    oflag = parameter(params['oflag'])
+    arch = parameter(params['arch'])
+    ompflag = parameter(params['ompflags'])
+    mpiflag = parameter(params['mpiflags'])
+    opt_string = parameter(params['optimisation-string'])
+    
     @performance_function('counts')
     def count_opts(self):
-        target_str = self.opt_strings[self.opts][self.current_environ.name]
-        num_opts = len(sn.evaluate(sn.extractall(target_str, self.ofile)))
+        num_opts = len(sn.evaluate(sn.extractall(self.opt_string, self.ofile)))
 
         return num_opts
-
 
     # Sanity test - fail if no instances of `target_str` found
     @sanity_function
     def assert_opt(self):
-        target_str = self.opt_strings[self.opts][self.current_environ.name]
-        num_opts = len(sn.evaluate(sn.extractall(target_str, self.ofile)))
-        # if num_opts > 0:
-        #     print('There are %d instances of `%s` in this optimisation file' % (num_opts, target_str))
-        # else:
-        #     print('There are NO instances of `%s` in this optimisation file' % target_str)
+        num_opts = len(sn.evaluate(sn.extractall(self.opt_string, self.ofile)))
 
         return(sn.assert_ge(num_opts, 1))
 
@@ -134,15 +86,15 @@ class countOptimisations(OptimiseBase):
 # Test for compiling with given optimisations and benchmarking performance
 # metrics of a vector calculation code
 @rfm.simple_test
-class benchmarkInstructions(rfm.RegressionTest):
+class benchmarkOptimisations(rfm.RegressionTest):
     def __init__(self):
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
+        sys_info = set_system(config_path, 'countInstructions')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        job_info = get_job_options(config_path, 'benchmarkOptimisations')
+        self.acct_str = job_info['account']
 
         # Metadata
         self.descr = 'Test class for analysing compiler optimisations and impact on code performance'
@@ -162,48 +114,42 @@ class benchmarkInstructions(rfm.RegressionTest):
             '-I${PROFILE_UTIL_DIR}/include', 
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/', 
             ]
-        ##########################################################
-        # MAY NEED TO BE EDITED DEPENDING ON COMPILER BEING USED #
-        ##########################################################
+        self.build_system.cppflags += [self.ompflag, self.mpiflag]
+        self.build_system.cppflags += [self.oflag, self.arch]
         self.cppflags = {
                 'system': [f'-{self.oflag}', f'-march={self.arch}'],
             }
+        self.prebuild_cmds += [
+            'MAIN_SRC_DIR=$(pwd)',
+            'cd common/profile_util',
+            './build_cpu.sh',
+            'PROFILE_UTIL_DIR=$(pwd)',
+            'cd ${MAIN_SRC_DIR}'
+        ]
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    opts = parameter(['Vectorise'])
-    oflag = parameter(['O3'])
-    arch = parameter(['znver3'])
-    ompflags = parameter(['', '-fopenmp'])
-    mpiflags = parameter(['', '-D_MPI'])
+    # Test parameters
+    params = get_test_params(config_path, 'benchmarkOptimisations')
+    oflag = parameter(params['oflag'])
+    arch = parameter(params['arch'])
+    ompflag = parameter(params['ompflags'])
+    mpiflag = parameter(params['mpiflags'])
 
     # Set job account in sbatch script
     @run_before('compile')
     def set_account(self):
         self.job.options = [f'--account={self.acct_str}']
-    # Compile `profile_util`
-    @run_before('compile')
-    def compile_prof_util(self):
-        self.prebuild_cmds += [
-            'cd profile_util', './build_cpu.sh', 'PROFILE_UTIL_DIR=$(pwd)', 'cd ../',
-        ]
     # Set the compilation flags
     @run_before('compile')
     def set_cppflags(self):
-        # Add the parameters as compilation flags
-        self.build_system.cppflags += [self.ompflags]
-        self.build_system.cppflags += [self.mpiflags]
-        self.build_system.cppflags += self.cpp_flags[self.current_system.name]
         # We want to compare with/without OMP/MPI, so set profile_util
         # library depending on value of ompflags and mpiflags parameters
-        if self.ompflags == '':
-            if self.mpiflags == '':
+        if self.ompflag == '':
+            if self.mpiflag == '':
                 self.build_system.cppflags += ['-lprofile_util']
             else:
                 self.build_system.cppflags += ['-lprofile_util_mpi']
         else:
-            if self.mpiflags == '':
+            if self.mpiflag == '':
                 self.build_system.cppflags += ['-lprofile_util_omp']
             else:
                 self.build_system.cppflags += ['-lprofile_util_mpi_omp']

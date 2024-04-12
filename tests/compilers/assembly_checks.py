@@ -6,6 +6,18 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
 
+import sys
+import os.path
+
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
+# Import functions to set env vars, modules, commands
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/cpu_compilation_config.yaml'
+
 
 
 # Count the occurencess of assembly code instructions in assembly file
@@ -13,20 +25,18 @@ import reframe.utility.sanity as sn
 class countInstructions(rfm.CompileOnlyRegressionTest):
     def __init__(self):
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        # Valid systems and programming environments
-        self.valid_systems = ['system:login']
-        self.valid_prog_environs = ['*']
+        sys_info = set_system(config_path, 'countInstructions')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Metadata
         self.descr = 'Test class for counting instructions in assembly file'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
-
         # Setup depends on what system we are on
         self.sysname = self.current_system.name
+        test_config = configure_test(config_path, 'countInstructions')
 
         # Setup for compile-time
         # We build `sourcepath` into an assembly-only "executable" `executable`
@@ -34,31 +44,26 @@ class countInstructions(rfm.CompileOnlyRegressionTest):
         self.sourcepath = 'vec_calc.cpp'
         self.executable = 'assembly.s'
         self.cppflags = {
-                'system': [f'-{self.oflag}', f'-march={self.arch}'],
+                self.sysname: [f'-{self.oflag}', f'-march={self.arch}'],
             }
 
-        # Keep assembly files produced from compilaton so can be analysed
-        # by python script in the postbuild_cmds
+        # Keep assembly files produced from compilaton
         self.keep_files = [self.executable]
 
+        self.ref_val = test_config['performance']['reference-value']
         self.reference = {
-            'system': {self.target_str: (1, 0, None, 'counts')}
+            self.sysname: {self.target_str: (self.ref_val, 0, None, 'counts')}
         }
-        self.perf_variables = {self.target_str: self.count_instructions(self.target_str)}
-
-        # If a common instruction of interest is found to be represented 
-        # differently in assembly language from different compilers, 
-        # construct a lookup dictionary here
+        self.perf_variables = {self.target_str: self.count_instructions()}
     
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    target_str = parameter(['fma']) # Instruction representation in assembly code
-    oflag = parameter(['O0', 'O1', 'O2', 'O3'])
-    arch = parameter(['znver2', 'znver3'])
-    ompflags = parameter(['', '-fopenmp'])
-    mpiflags = parameter(['', '-D_MPI'])
+    # Test parameters
+    params = get_test_params(config_path, 'countInstructions')
+    target_str = parameter(params['instruction-string']) # Instruction representation in assembly code
+    oflag = parameter(params['oflag'])
+    arch = parameter(params['arch'])
+    ompflags = parameter(params['ompflags'])
+    mpiflags = parameter(params['mpiflags'])
 
     # Set the compile flags that are the same for each child test
     @run_before('compile')
@@ -70,8 +75,8 @@ class countInstructions(rfm.CompileOnlyRegressionTest):
     # @run_before('performance')
     # def set_perf_dict(self):
     #     self.perv_variables = {instr: self.count_instructions(instr)}
-    @performance_function
-    def count_instructions(self, instruction = 'fma'):
+    @performance_function('counts')
+    def count_instructions(self):
         return len(sn.evaluate(sn.extractall(self.target_str, self.executable)))
 
     # Sanity test - fail if no instances of `target_str` found
