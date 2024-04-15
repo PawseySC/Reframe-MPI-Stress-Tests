@@ -1,0 +1,67 @@
+---
+# Config common to all tests
+system-parameters:
+  system:
+    - setonix:gpu
+  prog-environ:
+    - PrgEnv-gnu
+  exclusive-gpus-per-node: 8
+  cpus-per-gpu: 8
+environment:
+  gpu:
+    modules:
+      - rocm
+      - craype-accel-amd-gfx90a
+    commands:
+      - rocm-smi
+      - rocm-smi --showhw
+      - rocm-smi --showdriverversion
+    env-vars: {MPICH_GPU_SUPPORT_ENABLED: '1'}
+job-options:
+  account: pawsey0001-gpu
+  
+# GPU warmup compile check
+warmup_compile_check:
+  test-parameters:
+    build-type: ['hip', 'omp', 'hipomp']
+
+# GPU multigpu compile check
+multigpu_compile_check:
+  test-parameters:
+    build-type: ['hip']
+
+# GPU warmup check
+warmup_check:
+  performance:
+    hip:
+      reference-value:
+        run_kernel: 2400
+        alloc: 250
+        free: 200
+        kernel: 50
+        d2h: 700
+        h2d: 700
+    omp: # Same for hipomp
+      reference-value:
+        run_kernel: 1200
+        alloc: 1000
+        free: 700
+        kernel: 600
+        d2h: 600
+        h2d: 600
+  test-parameters:
+    build-type: ['hip', 'omp', 'hipomp']
+    ngpus-per-node: [2, 8]
+
+# GPU multigpu check
+multigpu_check:
+  performance:
+    hip:
+      reference-value:
+        run_kernel: 8000
+        kernel: 900
+        d2h: 600
+        h2d: 450
+  test-parameters:
+    build-type: ['hip']
+    ngpus-per-node: [2, 8]
