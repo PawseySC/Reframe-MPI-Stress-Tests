@@ -20,7 +20,8 @@ parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
 root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
 sys.path.append(root_dir)
 # Import functions to set env vars, modules, commands
-from common.scripts.set_test_env import *
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/slurm_cpu_config.yaml'
 
 @rfm.simple_test
 class MemoryCompileTest(rfm.CompileOnlyRegressionTest):
@@ -30,12 +31,13 @@ class MemoryCompileTest(rfm.CompileOnlyRegressionTest):
         self.descr = 'Compile code used for memory tests'
         self.maintaines = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
+        sys_info = set_system(config_path, 'MemoryCompile')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        # Account to charge job to
+        job_info = get_job_options(config_path, 'MemoryCompile')
+        self.acct_str = job_info['account']
 
         # Compilation and execution
         self.build_system = 'SingleSource'
@@ -72,20 +74,20 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check memory per node allocated in SLURM matches resource request'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.max_mem_per_cpu = 1840 # Memory per CPU when not hyperthreading 
+        sys_info = set_system(config_path, 'slurm_node_mem_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.max_mem_per_cpu = sys_info['max-mem-per-cpu']
 
         # Job options
-        self.num_nodes = 2
-        self.num_tasks_per_node = 4
+        job_info = get_job_options(config_path, 'slurm_node_mem_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.num_tasks_per_node = job_info['num-tasks-per-node']
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
-        self.num_cpus_per_task = 1
-        self.num_tasks_per_core = 1
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
+        self.num_tasks_per_core = job_info['num-tasks-per-core']
         if self.multithreading:
             self.nthreads_per_core = 2
             self.mem_per_cpu = self.max_mem_per_cpu // self.nthreads_per_core
@@ -95,10 +97,8 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
         self.mem_per_node = self.num_tasks_per_node * self.num_cpus_per_task * self.mem_per_cpu * self.nthreads_per_core // self.num_tasks_per_core
         
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -109,10 +109,9 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
 
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    multithreading = parameter([True, False])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'slurm_node_mem_check')
+    multithreading = parameter(params['multithreading'])
 
     # This test depends on `MemoryCompileTest`
     @run_after('init')
@@ -125,9 +124,7 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
         # Call program with 95% of --mem-per-node to allow for a margin of error
         self.executable_opts = ['%0.f' % (self.mem_per_node * 0.95)]
     
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Set job options
     @run_before('run')
     def set_job_options(self):
         self.job.options = [
@@ -169,19 +166,19 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check that memory per CPU allocated in SLURM matches resource request'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.max_mem_per_cpu = 1840 # Memory per CPU when not hyperthreading 
+        sys_info = set_system(config_path, 'slurm_cpu_mem_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.max_mem_per_cpu = sys_info['max-mem-per-cpu']
 
         # Job options
-        self.num_nodes = 1
-        self.num_tasks = 12
-        self.num_tasks_per_core = 1
-        self.num_cpus_per_task = 1
+        job_info = get_job_options(config_path, 'slurm_cpu_mem_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.num_tasks = job_info['num-tasks']
+        self.num_tasks_per_core = job_info['num-tasks-per-core']
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
         if self.multithreading:
             self.nthreads_per_core = 2
             self.mem_per_cpu = self.max_mem_per_cpu // self.nthreads_per_core
@@ -191,10 +188,8 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
         self.mem_per_node = self.num_tasks * self.num_cpus_per_task * self.mem_per_cpu * self.nthreads_per_core // self.num_tasks_per_core
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -205,10 +200,9 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
 
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    multithreading = parameter([True, False])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'slurm_cpu_mem_check')
+    multithreading = parameter(params['multithreading'])
 
     # This test depends on `MemoryCompileTest`
     @run_after('init')
@@ -221,9 +215,7 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
         # Call program with 95% of --mem-per-node to allow for a margin of error
         self.executable_opts = ['%0.f' % (self.mem_per_node * 0.95)]
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_options(self):
         self.job.options = [
@@ -266,32 +258,30 @@ class slurm_billing_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check that the billed CPUs are correct given the resource request'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.max_mem_per_cpu = 1840 # Memory per CPU when not hyperthreading in MB
+        sys_info = set_system(config_path, 'slurm_billing_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.max_mem_per_cpu = sys_info['max-mem-per-cpu']
 
         # Executable here is meaningless, it just allows the test to run
         self.executable = 'echo'
         self.executable_opts = ['hello world']
 
         # Job options
-        self.num_nodes = 1
-        self.num_tasks_per_node = 4
+        job_info = get_job_options(config_path, 'slurm_billing_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.num_tasks_per_node = job_info['num-tasks-per-node']
         self.num_tasks = self.num_tasks_per_node * self.num_nodes
-        self.num_cpus_per_task = 3
+        self.num_cpus_per_task = self.ncpus_per_task
         self.mem_per_node = 8 * self.max_mem_per_cpu
         # Set the memory per cpu to `max_mem_per_cpu` to get the number of CPUs needed for a given memory
         self.mem_per_cpu = self.max_mem_per_cpu
 
-        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = False, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -299,14 +289,12 @@ class slurm_billing_check(rfm.RunOnlyRegressionTest):
 
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    multithreading = parameter([False, True])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'slurm_billing_check')
+    multithreading = parameter(params['multithreading'])
+    ncpus_per_task = parameter(params['num-cpus-per-task'])
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_opts(self):
         if self.multithreading:
@@ -375,28 +363,26 @@ class slurm_cpu_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check the number of cores requested in a job matches what is allocated'
         self.maintainers = ['Craig', 'Pascal Jahan Elahi']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
+        sys_info = set_system(config_path, 'slurm_cpu_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
         
         # Executable - meaningless, needed for test to run
         self.executable = 'echo'
         self.executable_opts = ['hello world']
 
         # Job options
-        self.num_nodes = 1
-        self.num_cpus_per_task = 13
-        self.num_tasks_per_node = 5
+        job_info = get_job_options(config_path, 'slurm_cpu_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
+        self.num_tasks_per_node = job_info['num-tasks-per-node']
         self.num_tasks = self.num_tasks_per_node * self.num_nodes
 
-        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = False, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -407,14 +393,11 @@ class slurm_cpu_check(rfm.RunOnlyRegressionTest):
 
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    multithreading = parameter({True, False})
+    # Test parameter(s)
+    params = get_test_params(config_path, 'slurm_cpu_check')
+    multithreading = parameter(params['multithreading'])
     
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_options(self):
         if self.multithreading:
@@ -477,12 +460,10 @@ class omp_thread_check(rfm.RegressionTest):
         self.descr = 'Test that number of OMP threads available equals no. of CPUs requested'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
+        sys_info = set_system(config_path, 'omp_thread_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Compilation
         self.build_system = 'SingleSource'
@@ -506,12 +487,14 @@ class omp_thread_check(rfm.RegressionTest):
         self.executable = 'affinity_report.out'
         
         # Job options
-        self.num_cpus_per_task = 4
+        job_info = get_job_options(config_path, 'omp_thread_check')
+        self.acct_str = job_info['account']
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
 
-        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        self.variables['OMP_DISPLAY_ENV'] = 'VERBOSE'
         self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
         if modules != []:
             self.modules = modules
@@ -520,11 +503,10 @@ class omp_thread_check(rfm.RegressionTest):
         
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    multithreading = parameter([True, False])
-    cpu_binding = parameter(['auto', 'none', 'threads', 'cores'])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'omp_thread_check')
+    multithreading = parameter(params['multithreading'])
+    cpu_binding = parameter(params['cpu-binding'])
 
         
     # Explicitly set -c in srun statements (needed for SLURM > 21.08)
@@ -534,9 +516,7 @@ class omp_thread_check(rfm.RegressionTest):
         self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
         if self.cpu_binding != 'auto':
             self.job.launcher.options += [f'--cpu-bind={self.cpu_binding}']
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_options(self):
         if self.multithreading:
@@ -566,12 +546,13 @@ class AffinityCompileTest(rfm.CompileOnlyRegressionTest):
         self.descr = 'Test class for compiling an OMP thread/MPI rank affinity reporting program'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work'] 
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
+        sys_info = set_system(config_path, 'AffinityCompile')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+
+        job_info = get_job_options(config_path, 'AffinityCompile')
+        self.acct_str = job_info['account']
 
         # Compilation
         self.build_system = 'SingleSource'
@@ -611,13 +592,11 @@ class affinity_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test class for running and analysing an OMP thread/MPI rank affinity reporting program'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.max_mem_per_cpu = 1840 # Memory per CPU when not hyperthreading
+        sys_info = set_system(config_path, 'affinity_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.max_mem_per_cpu = sys_info['max-mem-per-cpu']
 
         # Execution
         self.executable_opts = ['&> affinity.txt']
@@ -625,6 +604,10 @@ class affinity_check(rfm.RunOnlyRegressionTest):
         self.keep_files = ['affinity.txt']
 
         # Job options
+        job_info = get_job_options(config_path, 'affinity_check')
+        self.acct_str = job_info['account']
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
+        self.num_nodes = job_info['num-nodes']
         if self.access == 'exclusive':
             self.num_tasks_per_node = 16
             self.exclusive_access = True
@@ -636,14 +619,15 @@ class affinity_check(rfm.RunOnlyRegressionTest):
         else:
             self.nthreads_per_core = 1
             self.mem_per_cpu = self.max_mem_per_cpu
-        self.num_cpus_per_task = self.ncpus_per_task
         self.num_tasks = self.num_tasks_per_node * self.num_nodes
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.omp_proc_bind)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        self.omp_num_threads = self.num_cpus_per_task
+        self.variables['OMP_NUM_THREADS'] = str(self.omp_num_threads)
+        self.variables['OMP_DISPLAY_AFFINITY'] = 'TRUE'
+        self.variables['OMP_DISPLAY_ENV'] = 'VERBOSE'
         # Specify distribution of OMP threads
         self.variables['OMP_PROC_BIND'] = self.omp_proc_bind
         self.variables['OMP_PLACES'] = self.omp_places
@@ -654,16 +638,12 @@ class affinity_check(rfm.RunOnlyRegressionTest):
 
         self.tags = {'slurm'}
     
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    access = parameter(['exclusive', 'shared'])
-    omp_num_threads = parameter([8])
-    omp_proc_bind = parameter(['master', 'close', 'spread'])
-    omp_places = parameter(['threads', 'cores', 'sockets'])
-    multithreading = parameter([True, False])
-    num_nodes = parameter([1])
-    ncpus_per_task = parameter([8])
+    # Test parameters
+    params = get_test_params(config_path, 'affinity_check')
+    access = parameter(params['access'])
+    omp_proc_bind = parameter(params['omp-proc-bind'])
+    omp_places = parameter(params['omp-places'])
+    multithreading = parameter(params['multithreading'])
 
     # This test depends on `AffinityCompileTest`
     @run_after('init')
@@ -674,9 +654,7 @@ class affinity_check(rfm.RunOnlyRegressionTest):
         self.sourcedir = AffinityCompileTest().stagedir
         self.executable = os.path.join(self.sourcedir, 'affinity_report.out')
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
@@ -741,13 +719,11 @@ class het_job_test(rfm.RegressionTest):
         self.descr = 'Testing heterogeneous MPI jobs in SLURM'
         self.maintainers = ['Craig Meyer', 'pascal.elahi@pawsey.org.au']
         
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.max_mem_per_cpu = 1840 # memory per CPU when not hyperthreading in MB
+        sys_info = set_system(config_path, 'het_job_test')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.max_mem_per_cpu = sys_info['max-mem-per-cpu']
 
         # Compilation - build from makefile
         self.build_system = 'Make'
@@ -763,13 +739,16 @@ class het_job_test(rfm.RegressionTest):
         self.executable_opts = ['1> hetjob.log 2> hetjob.err']
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        env_vars, modules, cmds = set_env(mpi = True, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
             self.prerun_cmds = cmds
 
+        job_info = get_job_options(config_path, 'het_job_test')
+        self.acct_str = job_info['account']
+        self.time_limit = job_info['time-limit']
 
         # Modify srun options depending on mode of heterogeneous job submission
         if self.mode == 'srun':
@@ -787,14 +766,11 @@ class het_job_test(rfm.RegressionTest):
                 f'srun --multi-prog multiprog.conf 1> nompi-multiprog.log 2> nompi-multiprog.err',
             ]
 
-        # Time limit for job failure
-        self.time_limit = '10m'
         self.tags = {'slurm'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    mode = parameter(['sbatch', 'srun', 'multiprog'])
+    # Test parameters
+    params = get_test_params(config_path, 'het_job_test')
+    mode = parameter(params['mode'])
 
 
     # Set srun options depending on mode of heterogeneous job submission
@@ -812,10 +788,7 @@ class het_job_test(rfm.RegressionTest):
             self.executable_opts= ['1> mpi-multiprog.log 2> mpi-multiprog.err']
 
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
-    # Job optionsdepend on heterogeneous job mode
+    # Job options depend on heterogeneous job mode
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [f'--account={self.acct_str}']
@@ -859,25 +832,26 @@ class het_job_test(rfm.RegressionTest):
 class accounting_check(rfm.RunOnlyRegressionTest):
     def __init__(self):
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name'
+        sys_info = set_system(config_path, 'accounting_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Execution - sleep for 2 minutes
         self.executable = 'sleep'
         self.executable_opts = ['120s']
 
         # Job options
-        self.num_tasks = 12
-        self.num_cpus_per_task = 1
-        self.time_limit = '5m'
+        job_info = get_job_options(config_path, 'accounting_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.num_tasks = job_info['num-tasks']
+        self.num_cpus_per_task = job_info['num-cpus-per-task']
+        self.time_limit = job_info['time-limit']
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        env_vars, modules, cmds = set_env(mpi = False, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -890,7 +864,7 @@ class accounting_check(rfm.RunOnlyRegressionTest):
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
-            '--nodes=1',
+            f'--nodes={self.num_nodes}',
             f'--account={self.acct_str}'
         ]
 
