@@ -16,54 +16,39 @@ job-options:
 # FOR SPECIFIC TESTS #
 # ------------------ #
 
-# countInstructions
-countInstructions:
+# benchmarkInstructions
+benchmarkInstructions:
   system-parameters:
     system:
-      - setonix:login
+      - setonix:work
     prog-environ:
       - PrgEnv-gnu
   performance:
     reference-value: 1
+  job-options:
+    account: pawsey0001
   test-parameters:
-    # String representing a particular instruction (in this default case, fused-multiply-add)
-    # Can be compiler dependent so may need editing
     instruction-string: ['fma']
     oflag: ['-O0', '-O1', '-O2', '-O3']
     arch: ['-march=znver2', '-march=znver3']
     ompflags: ['', '-fopenmp']
     mpiflags: ['', '-D_MPI']
 
-# countOptimisations
-countOptimisations:
-  system-parameters:
-    system:
-      - setonix:login
-    prog-environ:
-      - PrgEnv-gnu
-    # This is flag for saving optimisation file - compiler dependent so may require editing
-    ofile-flag: '-fopt-info-all'
-  performance:
-    reference-value: 1
-  test-parameters:
-    # Each entry is string representation of an optimisation (in this case, vectorisation and loop unroll) in optimisation file
-    # The string can change depending on compiler, etc. used, so these may need to be edited
-    # These optimisation stirngs are for gcc/12.1.0
-    optimisation-string: ['loop vectorized', 'unrolled loop']
-    oflag: ['-O0', '-O1', '-O2', '-O3']
-    arch: ['-march=znver2', '-march=znver3']
-    ompflags: ['', '-fopenmp']
-    mpiflags: ['', '-D_MPI']
-
+# benchmarkOptimisations
 benchmarkOptimisations:
   system-parameters:
     system:
       - setonix:work
     prog-environ:
       - PrgEnv-gnu
+    # This is flag for saving optimisation file - compiler dependent so may require editing
+    ofile-flag: '-fopt-info-all'
+  performance:
+    reference-value: 1
   job-options:
     account: pawsey0001
   test-parameters:
+    optimisation-string: ['loop vectorized', 'unrolled loop']
     oflag: ['-O0' ,'-O1', '-O2', '-O3']
     arch: ['-march=znver2', '-march=znver3']
     ompflags: ['', '-fopenmp']

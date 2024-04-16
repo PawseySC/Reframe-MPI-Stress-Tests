@@ -19,77 +19,13 @@ from common.scripts.parse_yaml import *
 config_path = curr_dir + '/cpu_compilation_config.yaml'
 
 
-@rfm.simple_test
-class countOptimisations(rfm.CompileOnlyRegressionTest):
-    def __init__(self):
-
-        sys_info = set_system(config_path, 'countInstructions')
-        # Valid systems and PEs test will run on
-        self.valid_systems = [s for s in sys_info['system']]
-        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
-
-        # Metadata
-        self.descr = 'Base test class for analysing compiler optimisations'
-        self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
-
-        # Setup depends on what system we are on
-        self.sysname = self.current_system.name
-        test_config = configure_test(config_path, 'countOptimisations')
-        self.ofile_flag = test_config['system-parameters']['ofile-flag']
-
-        # Setup for compile-time
-        # We build `sourcepath`, creating an optimisation file `self.ofile`
-        self.build_system = 'SingleSource'
-        self.sourcepath = 'vec_calc.cpp'
-        self.ofile = 'vec_calc.lst'
-        self.build_system.cppflags = [
-            self.oflag,
-            self.arch,
-            self.ompflag, self.mpiflag,
-            f'{self.ofile_flag}={self.ofile}'
-        ]
-
-        # Keep optimisation file produced from compilation
-        self.keep_files = [f'{self.ofile}']
-
-        # Dictionary of optimisations and their corresponding strings
-        # based on which compiler is being used
-        self.ref_val = test_config['performance']['reference-value']
-        self.reference = {
-            self.sysname: {self.opt_string: (self.ref_val, 0, None, 'counts')}
-        }
-        self.perf_variables = {self.opt_string: self.count_opts()}
-
-    
-    # Test parameters
-    params = get_test_params(config_path, 'countOptimisations')
-    oflag = parameter(params['oflag'])
-    arch = parameter(params['arch'])
-    ompflag = parameter(params['ompflags'])
-    mpiflag = parameter(params['mpiflags'])
-    opt_string = parameter(params['optimisation-string'])
-    
-    @performance_function('counts')
-    def count_opts(self):
-        num_opts = len(sn.evaluate(sn.extractall(self.opt_string, self.ofile)))
-
-        return num_opts
-
-    # Sanity test - fail if no instances of `target_str` found
-    @sanity_function
-    def assert_opt(self):
-        num_opts = len(sn.evaluate(sn.extractall(self.opt_string, self.ofile)))
-
-        return(sn.assert_ge(num_opts, 1))
-
-
 # Test for compiling with given optimisations and benchmarking performance
 # metrics of a vector calculation code
 @rfm.simple_test
 class benchmarkOptimisations(rfm.RegressionTest):
     def __init__(self):
 
-        sys_info = set_system(config_path, 'countInstructions')
+        sys_info = set_system(config_path, 'benchmarkOptimisations')
         # Valid systems and PEs test will run on
         self.valid_systems = [s for s in sys_info['system']]
         self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
@@ -102,6 +38,8 @@ class benchmarkOptimisations(rfm.RegressionTest):
 
         # Setup depends on what system we are on
         self.sysname = self.current_system.name
+        test_config = configure_test(config_path, 'benchmarkOptimisations')
+        self.ofile_flag = test_config['system-parameters']['ofile-flag']
         # Explicitly specify the number of CPUs per task
         self.num_cpus_per_task = 1
 
@@ -109,6 +47,7 @@ class benchmarkOptimisations(rfm.RegressionTest):
         # We build `sourcepath`, creating an optimisation file `self.ofile`
         self.build_system = 'SingleSource'
         self.sourcepath = 'vec_bm.cpp'
+        self.ofile = 'vec_bm.lst'
         self.build_system.cppflags = [
             '-L${PROFILE_UTIL_DIR}/lib', 
             '-I${PROFILE_UTIL_DIR}/include', 
@@ -116,9 +55,7 @@ class benchmarkOptimisations(rfm.RegressionTest):
             ]
         self.build_system.cppflags += [self.ompflag, self.mpiflag]
         self.build_system.cppflags += [self.oflag, self.arch]
-        self.cppflags = {
-                'system': [f'-{self.oflag}', f'-march={self.arch}'],
-            }
+        self.build_system.cppflags += [f'{self.ofile_flag}={self.ofile}']
         self.prebuild_cmds += [
             'MAIN_SRC_DIR=$(pwd)',
             'cd common/profile_util',
@@ -127,8 +64,17 @@ class benchmarkOptimisations(rfm.RegressionTest):
             'cd ${MAIN_SRC_DIR}'
         ]
 
+        # Keep optimisation file produced from compilation
+        self.keep_files = [f'{self.ofile}']
+
+        self.ref_val = test_config['performance']['reference-value']
+        self.reference = {
+            self.sysname: {self.opt_string: (self.ref_val, 0, None, 'counts')}
+        }
+
     # Test parameters
     params = get_test_params(config_path, 'benchmarkOptimisations')
+    opt_string = parameter(params['optimisation-string'])
     oflag = parameter(params['oflag'])
     arch = parameter(params['arch'])
     ompflag = parameter(params['ompflags'])
@@ -162,6 +108,7 @@ class benchmarkOptimisations(rfm.RegressionTest):
     @run_before('performance')
     def set_perf_dict(self):
         self.perf_variables = {
+            self.opt_string: self.count_opts(),
             'Allocate memory': self.extract_timing('allocateMem'),
             'Initialise vectors': self.extract_timing('initialiseVecs'),
             'Perform vector math': self.extract_timing(),
@@ -177,6 +124,11 @@ class benchmarkOptimisations(rfm.RegressionTest):
         # Extract timing for the specific function
         return sn.extractsingle(rf'Time taken between : @{func} L[0-9]+ - @{func} L[0-9]+ :\s+(\S+)\s+',
                                 self.stdout, 1, float)
+    @performance_function('counts')
+    def count_opts(self):
+        num_opts = len(sn.evaluate(sn.extractall(self.opt_string, self.ofile)))
+
+        return num_opts
     
     # Simple sanity function to see if program reaches completion
     @sanity_function
