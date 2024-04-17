@@ -17,7 +17,7 @@ The CPU and GPU nodes on our system have different hardware and setups, and as s
 
 ### Compilation/Performance
 
-A collection of tests which focussed on compilers and the affect of different compile-time options, flags, etc. on the performance of the compiled code. The tests are split into compilation tests and performance tests, the latter of which depend on the former. Therefore, if the test fails, you will instantly know if it's a compilation failure or code execution/performance failure. By running the tests with multiple different combinations of compilers, flags, etc. one can investigate the effects with these tests.
+A collection of tests which focussed on compilers and the affect of different compile-time options, flags, etc. on the performance of the compiled code. By running the tests with multiple different combinations of compilers, flags, etc. one can investigate the effects with these tests.
 
 ### Software stack
 
@@ -29,7 +29,7 @@ To run the tests one first needs to have a working ReFrame on their system - det
 
 `reframe -C ${PATH_TO_THIS_REPO_ROOT_DIR}/setup_files/settings.py -c $PATH_TO_TEST_FILE_OR_DIRECTORY -r [-t $TAG -n $TEST_NAME --performance-report ...]`
 
-Alternatively, one can utilise the script located at `tests/run_tests.sh`. This script runs a subset of tests based on the argument provided. Below are examples of its usage:
+Alternatively, one can utilise the script located at `tests/run_tests.sh`. This script runs a subset of tests based on the argument provided. All tests run in this script have the `--performance-report` reframe command-line argument set so that performance metrics are printed to the terminal in addition to being stored in performance log files. Below are examples of its usage:
 
 ```
 # Run all tests in this repo (pass no arguments)
@@ -46,6 +46,9 @@ Alternatively, one can utilise the script located at `tests/run_tests.sh`. This 
 
 # Run several specific tests (pass the list of test names as a '|'-delimited list)
 ./tests/run_tests.sh --test-names "Pt2Pt|CollectiveComms"
+
+# Run tests with extra (optional) arguments passed to Reframe (pass ',' separated string of options)
+./tests/run_tests.sh --test-file slurm/slurm_gpu_checks --options "--output=DIR, --keep-stage-files, --perflogdir=DIR"
 ```
 
 ### Configuring the tests for your system
@@ -76,4 +79,4 @@ job-options:
   account: pawsey0001 # Account to charge for running job
 ```
 
-On Setonix we use the SLURM job scheduler, so if you are using a different one, more modifications will be required to run the tests due to differing naming conventions and differences in the level of integration of various job schedulers with ReFrame.
+On Setonix we use the SLURM job scheduler, so if you are using a different one, more modifications will be required to run the tests due to differing naming conventions and differences in the level of integration of various job schedulers within ReFrame.
