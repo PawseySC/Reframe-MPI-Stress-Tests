@@ -1,0 +1,157 @@
+---
+# Config common to all tests
+environment:
+    mpi:
+      modules: ~
+      commands: ~
+      env-vars: {MPICH_ENV_DISPLAY: '1', MPICH_MEMORY_REPORT: '1', MPICH_OFI_VERBOSE: '1'}
+    slurm:
+      modules: ~
+      commands: [scontrol show job $SLURM_JOB_ID, seff $SLURM_JOB_ID, env | grep -i SLURM, env | grep -i SRUN]
+      env-vars: ~
+  
+# MemoryCompile test
+MemoryCompile:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  job-options:
+    account: pawsey0001
+
+# mem-per-node test
+slurm_node_mem_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    max-mem-per-cpu: 1840
+  job-options:
+    account: pawsey0001
+    num-nodes: 2
+    num-tasks-per-node: 4
+    num-cpus-per-task: 1
+    num-tasks-per-core: 1
+  test-parameters:
+    multithreading: [True, False]
+
+# mem-per-cpu test
+slurm_cpu_mem_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    max-mem-per-cpu: 1840
+  job-options:
+    account: pawsey0001
+    num-nodes: 1
+    num-tasks: 12
+    num-cpus-per-task: 1
+    num-tasks-per-core: 1
+  test-parameters:
+    multithreading: [True, False]
+
+# billing test
+slurm_billing_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    max-mem-per-cpu: 1840
+  job-options:
+    account: pawsey0001
+    num-nodes: 1
+    num-tasks-per-node: 4
+    #num-cpus-per-task: 3
+  test-parameters:
+    multithreading: [True, False]
+    num-cpus-per-task: [1, 2, 3]
+
+# cpu test
+slurm_cpu_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  job-options:
+    account: pawsey0001
+    num-nodes: 1
+    num-cpus-per-task: 13
+    num-tasks-per-node: 5
+  test-parameters:
+    multithreading: [True, False]
+
+# omp thread test
+omp_thread_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  job-options:
+    account: pawsey0001
+    num-cpus-per-task: 4
+  test-parameters:
+    multithreading: [True, False]
+    cpu-binding: [auto, none, threads, cores]
+
+# AffinityCompile test
+AffinityCompile:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  job-options:
+    account: pawsey0001
+
+# affinity test
+affinity_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    max-mem-per-cpu: 1840
+  job-options:
+    account: pawsey0001
+    num-nodes: 1
+    num-cpus-per-task: 8
+  test-parameters:
+    access: [exclusive, shared]
+    omp-proc-bind: [master, close, spread]
+    omp-places: [threads, cores, sockets]
+    multithreading: [True, False]
+
+# hetereogeneous job test
+het_job_test:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    max-mem-per-cpu: 1840
+  job-options:
+    account: pawsey0001
+    time-limit: 600
+  test-parameters:
+    mode: [sbatch, srun, multiprog]
+
+# accounting test
+accounting_check:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  job-options:
+    account: pawsey0001
+    num-nodes: 1
+    num-tasks: 12
+    num-cpus-per-task: 1
+    time-limit: 300

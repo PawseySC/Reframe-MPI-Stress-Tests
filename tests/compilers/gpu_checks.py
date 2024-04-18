@@ -16,17 +16,17 @@ parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
 root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
 sys.path.append(root_dir)
 # Import functions to set env vars, modules, commands
-from common.scripts.set_test_env import *
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/gpu_compilation_config.yaml'
 
 
 class gpu_compile_base_check(rfm.CompileOnlyRegressionTest, pin_prefix = True):
     def __init__(self, name, **kwargs):
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
+        sys_info = set_system(config_path)
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Metadata
         self.descr = 'Base class for compiling warmup and multi-GPU tests from performance-modelling-tools repo'
@@ -47,17 +47,19 @@ class warmup_compile_check(gpu_compile_base_check):
         self.maintainers = ['Craig Meyer']
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        _, modules, _ = set_env(mpi = False, gpu = True)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
         self.prebuild_cmds = [f'make -f Makefile_warmup clean',]
         self.build_system.options = ['-f Makefile_warmup', f'buildtype={self.build_type}']
         
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    build_type = parameter(['hip', 'acc', 'hipacc', 'omp', 'hipomp'])
+    # Test parameters
+    params = get_test_params(config_path, 'warmup_compile_check')
+    build_type = parameter(params['build-type'])
 
     # Test passes if compiled executable exists
     @sanity_function
@@ -75,14 +77,18 @@ class multigpu_compile_check(gpu_compile_base_check):
         self.maintainer = ['Craig Meyer']
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        _, modules, _ = set_env(mpi = False, gpu = True)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
+        if cmds != []:
+            self.prerun_cmds = cmds
         self.prebuild_cmds = [f'make -f Makefile_multigpu clean']
         self.build_system.options = ['-f Makefile_multigpu', f'buildtype={self.build_type}']
 
     # Test parameter
-    build_type = parameter(['hip', 'hipacc', 'acc'])
+    params = get_test_params(config_path, 'multigpu_compile_check')
+    build_type = parameter(params['build-type'])
 
     # Test passes if compiled executable exists
     @sanity_function
@@ -95,30 +101,31 @@ class multigpu_compile_check(gpu_compile_base_check):
 class warmup_check(rfm.RunOnlyRegressionTest):
     def __init__(self):
 
+        sys_info = set_system(config_path)
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
+        job_info = get_job_options(config_path)
+        self.acct_str = job_info['account']
+
         # Metadata
         self.descr = 'Test GPU warmup times using test from performance-modelling-tools repo'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name'
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
-
         # Job options (these will automatically be set in the job script by ReFrame)
         self.num_tasks = self.ngpus_per_node
-        self.num_cpus_per_task = self.cpus_per_gpu
+        self.ncpus_per_task = self.cpus_per_gpu
         if self.ngpus_per_node == self.exclusive_gpus_per_node:
             self.exclusive_access = True
 
+        test_config = configure_test(config_path, 'warmup_check')
+
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = False, omp = iomp, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        self.variables['OMP_NUM_THREADS'] = str(self.ncpus_per_task)
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -126,54 +133,26 @@ class warmup_check(rfm.RunOnlyRegressionTest):
         
         self.keep_files = ['logs/*']
         
-        #############################################
-        # PERFORMANCE OF DIFFERENT SECTOINS OF CODE #
-        #############################################
-        # NOTE: Will likely need altering
+        # Performance reference values to check against
         self.scaling_factor = self.ngpus_per_node
-        if self.build_type in ['hip', 'hipacc']:
+        if self.build_type == 'hip':
+            ref_dict = test_config['performance']['hip']['reference-value']
             self.reference = {
-                '*': {
-                    'run_kernel': (2400 * self.scaling_factor**2, None, 0.2),
-                    'alloc': (250 * self.scaling_factor, None, 0.2),
-                    'free': (200 * self.scaling_factor, None, 0.2),
-                    'kernel': (50 * self.scaling_factor, None, 0.2),
-                    'd2h': (700 * self.scaling_factor**2, None, 0.2),
-                    'h2d': (700 * self.scaling_factor**2, None, 0.2),
-                },
+                '*': {key: (val * self.scaling_factor**2, None, 0.2) for key, val in ref_dict.items()}
             }
         elif 'omp' in self.build_type:
+            ref_dict = test_config['performance']['omp']['reference-value']
             self.reference = {
-                '*': {
-                    'run_kernel': (1200 * self.scaling_factor**2, None, 0.2),
-                    'alloc': (1000 * self.scaling_factor**2, None, 0.2),
-                    'free': (700 * self.scaling_factor**2, None, 0.2),
-                    'kernel': (600 * self.scaling_factor**2, None, 0.2),
-                    'd2h': (600 * self.scaling_factor**2, None, 0.2),
-                    'h2d': (600 * self.scaling_factor**2, None, 0.2),
-                }
+                '*': {key: (val * self.scaling_factor**2, None, 0.2) for key, val in ref_dict.items()}
             }
-        elif self.build_type == 'acc':
-            self.reference = {
-                '*': {
-                    'run_kernel': (1100, None, 0.2),
-                    'alloc': (600, None, 0.2),
-                    'free': (1200, None, 0.2),
-                    'kernel': (600, None, 0.2),
-                    'd2h': (700, None, 0.2),
-                    'h2d': (400, None, 0.2),
-                }
-            }
-
 
         self.tags = {'gpu'}
 
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    ngpus_per_node = parameter([2, 8])
-    build_type = parameter(['hip', 'hipacc', 'acc', 'omp', 'hipomp'])
+    # Test parameters
+    params = get_test_params(config_path, 'warmup_check')
+    ngpus_per_node = parameter(params['ngpus-per-node'])
+    build_type = parameter(params['build-type'])
 
     # Test dependency - this test depends on the compilation test and only runs if that test passes,
     # so failure can immediately be diagnosed as compilation or performance/execution
@@ -221,14 +200,15 @@ class warmup_check(rfm.RunOnlyRegressionTest):
         elif kind == 'h2d':
             return sum(times[5:ntimes:6]) / self.ngpus_per_node
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
     # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
     def set_job_opts(self):
-        self.job.options = [f'--account={self.acct_str}', f'--gres=gpu:{self.ngpus_per_node}']
+        self.job.options = [
+            f'--account={self.acct_str}',
+            f'--gres=gpu:{self.ngpus_per_node}'
+        ]
 
     # Sanity function
     @sanity_function
@@ -245,26 +225,27 @@ class multigpu_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test performance with multiple GPUs using test from performance-modelling-tools repo'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name'
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        sys_info = set_system(config_path)
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
+        job_info = get_job_options(config_path)
+        self.acct_str = job_info['account']
+
+        test_config = configure_test(config_path, 'multigpu_check')
 
         # Job options (these will automatically be set in the job script by ReFrame)
         self.num_tasks = self.ngpus_per_node
-        self.num_cpus_per_task = self.cpus_per_gpu
+        self.ncpus_per_task = self.cpus_per_gpu
         if self.ngpus_per_node == self.exclusive_gpus_per_node:
             self.exclusive_access = True
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = False, omp = iomp, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        self.variables['OMP_NUM_THREADS'] = str(self.ncpus_per_task)
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -272,37 +253,20 @@ class multigpu_check(rfm.RunOnlyRegressionTest):
         
         self.keep_files = ['logs/*']
 
-        #############################################
-        # PERFORMANCE OF DIFFERENT SECTOINS OF CODE #
-        #############################################
-        # NOTE: Will likely need altering
+        # Performence reference values to check against
         self.scaling_factor = self.ngpus_per_node
-        if self.build_type in ['hip', 'hipacc']:
+        if self.build_type == 'hip':
+            ref_dict = test_config['performance']['hip']['reference-value']
             self.reference = {
-                '*': {
-                    'run_kernel': (8000 * self.scaling_factor**2, None, 0.2),
-                    'kernel': (900 * self.scaling_factor**2, None, 0.2),
-                    'd2h': (600 * self.scaling_factor**2, None, 0.2),
-                    'h2d': (450 * self.scaling_factor**2, None, 0.2),
-                },
-            }
-        elif self.build_type == 'acc':
-            self.reference = {
-                '*': {
-                    'run_kernel': (600, None, 0.2),
-                    'kernel': (250, None, 0.2),
-                    'd2h': (600, None, 0.2),
-                    'h2d': (300, None, 0.2),
-                }
+                '*': {key: (val * self.scaling_factor**2, None, 0.2) for key, val in ref_dict.items()}
             }
 
         self.tags = {'gpu'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    ngpus_per_node = parameter([2, 8])
-    build_type = parameter(['hip', 'hipacc', 'acc'])
+    # Test parameters
+    params = get_test_params(config_path, 'multigpu_check')
+    ngpus_per_node = parameter(params['ngpus-per-node'])
+    build_type = parameter(params['build-type'])
 
     # Test dependency - this test depends on the compilation test and only runs if that test passes,
     # so failure can immediately be diagnosed as compilation or performance/execution
@@ -344,9 +308,7 @@ class multigpu_check(rfm.RunOnlyRegressionTest):
         elif kind == 'h2d':
             return sum(times[3:ntimes:4]) / self.ngpus_per_node
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
     # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
