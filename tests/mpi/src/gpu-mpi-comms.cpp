@@ -156,14 +156,18 @@ std::tuple<float, float, float, float> TimeStats(
     for (auto &t:times)
     {
         ave += t;
-        std += t*t;
+        // std += t*t;
         // mint = std::min(mint,t);
         // maxt = std::max(maxt,t);
     }
-    float n = times.size();
-    ave /= n;
-    if (n>1) std = sqrt((std - ave*ave*n)/(n-1.0));
+    ave /= N;
+    for (auto & t : times)
+    {
+        std += pow(t - ave, 2);
+    }
+    if (N > 1) std = sqrt(std / (N - 1.0));
     else std = 0;
+
     return std::make_tuple(ave, std, mint, maxt);
 }
 

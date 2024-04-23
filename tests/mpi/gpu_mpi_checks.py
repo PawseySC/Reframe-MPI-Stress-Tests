@@ -8,25 +8,30 @@ import reframe.utility.sanity as sn
 
 from math import sqrt
 
-# Import functions to set environment variables, etc.
 import sys
-import os
-sys.path.append(os.getcwd() + '/common/scripts')
-from set_test_env import *
+import os.path
+
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
+# Import functions to set env vars, modules, commands
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/gpu_mpi_config.yaml'
 
 
 # Base MPI communications test class
 class gpu_mpi_comms_base_check(rfm.RegressionTest):
     def __init__(self, name, **kwargs):
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:work']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        sys_info = set_system(config_path)
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        # Maximum number of GPUs available per node and no. of CPUs associated with each GPU
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node']
+        self.cpus_per_gpu = sys_info['cpus-per-gpu']
 
         # Metadata
         self.descr = 'Base test for GPU-MPI communication tests'
@@ -47,40 +52,39 @@ class gpu_mpi_comms_base_check(rfm.RegressionTest):
         ]
 
         # Set job options
+        job_info = get_job_options(config_path)
+        self.acct_str = job_info['account']
+        self.time_limit = job_info['time-limit']
+        # Set 1 task per GPU
         self.num_tasks = self.ngpus_per_node
         if self.ngpus_per_node == self.exclusive_gpus_per_node:
             self.exclusive_access = True
-        self.num_cpus_per_task = self.cpus_per_gpu 
-        self.time_limit = '10m'
+        self.ncpus_per_task = self.cpus_per_gpu
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
             self.prerun_cmds = cmds
-
+        # Keep log files from node check
         self.keep_files = ['logs/*']
+
         self.tags = {'gpu', 'mpi'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    ngpus_per_node = parameter([2, 8])
-    num_nodes = parameter([1, 2, 4])
+    # Test parameter(s)
+    params = get_test_params(config_path)
+    ngpus_per_node = parameter(params['num-gpus-per-node'])
+    num_nodes = parameter(params['num-nodes'])
 
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Set job options
     # NOTE: These don't have automatic ReFrame equivalent, so need to be manually set
     # NOTE: Default format is SLURM/SBATCH, adjust if needed
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
-            '--nodes=1',
+            f'--nodes={self.num_nodes}',
             f'--account={self.acct_str}',
             f'--gpus-per-node={self.ngpus_per_node}',
         ]
@@ -93,7 +97,7 @@ class gpu_mpi_comms_base_check(rfm.RegressionTest):
     @run_before('run')
     def srun_cpus_per_task(self):
         if self.job.scheduler.registered_name in ['slurm', 'squeue']:
-            self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
+            self.job.launcher.options = [f'-c {self.ncpus_per_task}']
 
 
 
@@ -269,9 +273,6 @@ class gpu_allreduce_check(gpu_mpi_comms_base_check):
             },
         }
 
-    
-    ngpus_per_node = parameter([2])
-
     # Set dictionary of performance metrics
     @run_before('performance')
     def set_perf_dict(self):
@@ -326,8 +327,6 @@ class gpu_async_sendrecv_check(gpu_mpi_comms_base_check):
                 'max time': (8e5 * self.scaling_factor, None, 0.2),
             },
         }
-    
-    ngpus_per_node = parameter([2])
 
     # Set dictionary of performance metrics
     @run_before('performance')

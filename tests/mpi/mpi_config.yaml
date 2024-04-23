@@ -1,0 +1,114 @@
+---
+# ------------------- #
+# COMMON TO ALL TESTS #
+# ------------------- #
+# System level parameters required for the Reframe tests
+system-parameters: 
+  system: # Value for valid_systems in Reframe test class
+    - setonix:work
+  prog-environ: # Value for valid_prog_environs in Reframe test class
+    - PrgEnv-gnu
+# Configure the environment
+environment:
+  # MPI-related environment settings
+  mpi:
+    # Any modules to load
+    modules: ~
+    # Any commands to execute to configure environment
+    commands: ~
+    # Environment variables
+    env-vars: {MPICH_ENV_DISPLAY: '1', MPICH_MEMORY_REPORT: '1', MPICH_OFI_VERBOSE: '1'}
+# Job options to pass to job script
+job-options:
+  account: pawsey0001
+
+# ------------------ #
+# FOR SPECIFIC TESTS #
+# ------------------ #
+
+# Specifics for Pt2Pt test
+Pt2Pt:
+  executable-options:
+    ndata: '512'
+    iadjacent: '0'
+    iblocking: '3'
+    iverbose: '1'
+    idelay: '0'
+    irandom: '0'
+  job-options:
+    num-tasks-per-node: 24
+  performance:
+    reference-value: 2.e+06
+  test-parameters:
+    num-nodes: [1, 2, 4, 8, 16, 32]
+
+# Specific for CollectiveComms test
+CollectiveComms:
+  executable-options:
+    ndata: '100'
+    iverbose: '1'
+  job-options:
+    num-tasks-per-node: 24
+  performance:
+    reference-value:
+      bcast: 3.e+06
+      gather: 2.e+06
+      distribute: 1.5e+06
+      reduce: 6.e+03
+  test-parameters:
+    num-nodes: [1, 2, 4, 8, 16, 32]
+
+# Specific for DelayHang test
+# NOTE:These specific values replicate the bug on Setonix
+DelayHang:
+  executable-options:
+    ndata: '512'
+    mode: 'HANGING'
+    delay-rank: '45'
+    delay-time: '600'
+  job-options:
+    num-nodes: 2
+    num-tasks-per-node: 40
+
+# Specific for CorrectSends test
+# NOTE: These specific values replicate the bug on Setonix
+CorrectSends:
+  executable-options:
+    ndata: '100'
+    mode: 'CORRECT_SENDS'
+  job-options:
+    num-nodes: 1
+    num-tasks: 24
+    #- num-cpus-per-task: 1 inherit from system-wide omp-num-threads
+  test-parameters:
+    send-mode: [isend, send, ssend]
+
+# Specific for LargeCommHang test
+# NOTE: These specific values replicate the bug on Setonix
+LargeCommHang:
+  executable-options:
+    ndata: '1024'
+    iadjacent: '0'
+    iblocking: '3'
+    iverbose: '1'
+    idelay: '0'
+    irandom: '0'
+  job-options:
+    num-nodes: 4
+    exclusive: True
+    time-limit: 300 # seconds
+  test-parameters:
+    num-tasks-per-node: [85, 86]
+
+# Specific for MemoryLeak test
+MemoryLeak:
+  executable-options:
+    ndata: '300'
+    iverbose: '1'
+  job-options:
+    mem-per-cpu: 1840 # MB
+    exclusive: True
+  cadence: 1.0 # Seconds
+  test-parameters:
+    num-nodes: [1, 2, 4, 8, 16, 32]
+    num-tasks-per-node: 24

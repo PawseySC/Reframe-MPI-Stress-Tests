@@ -1,0 +1,63 @@
+---
+# ------------------- #
+# COMMON TO ALL TESTS #
+# ------------------- #
+
+# System level parameters required for the Reframe tests
+system-parameters: 
+  system: # Value for valid_systems in Reframe test class
+    - setonix:gpu
+  prog-environ: # Value for valid_prog_environs in Reframe test class
+    - PrgEnv-gnu
+  exclusive-gpus-per-node: 8
+  cpus-per-gpu: 8
+# Configure the environment
+environment:
+  mpi:
+    modules: ~
+    commands: ~
+    env-vars: {MPICH_ENV_DISPLAY: '1', MPICH_MEMORY_REPORT: '1', MPICH_OFI_VERBOSE: '1'}
+  gpu:
+    modules: [rocm, craype-accel-amd-gfx90a]
+    commands: [rocm-smi, rocm-smi --showhw, rocm-smi --showdriverversion]
+    env-vars: {MPICH_GPU_SUPPORT_ENABLED: '1'}
+# Job options to pass to job script
+job-options:
+  account: pawsey0001-gpu
+  time-limit: 600
+# Reframe parameters for the test
+test-parameters:
+  num-gpus-per-node: [2, 8]
+  num-nodes: [1, 2, 4]
+
+
+# ------------------ #
+# FOR SPECIFIC TESTS #
+# ------------------ #
+
+# Specifics for gpu_copy_check
+gpu_copy_check:
+  performance:
+    reference-value:
+      avg: 6.7e+04
+      sd: 4.4e+04
+      min: 1.5e+03
+      max: 2.e+06
+
+# Specifics for gpu_allreduce_check
+gpu_allreduce_check:
+  performance:
+    reference-value:
+      avg: 6.0e+04
+      sd: 2.0e+05
+      min: 1.2e+03
+      max: 2.0e+05
+
+# Specific for gpu_async_sendrecv_check
+gpu_async_sendrecv_check:
+  performance:
+    reference-value:
+      avg: 3.0e+05
+      sd: 2.0e+05
+      min: 3.0e+02
+      max: 8.0e+05

@@ -8,11 +8,17 @@ import reframe.utility.sanity as sn
 
 from math import floor
 
-# Import functions to set environment variables, etc.
 import sys
-import os
-sys.path.append(os.getcwd() + '/common/scripts')
-from set_test_env import *
+import os.path
+
+# Add root directory of repo to path
+curr_dir = os.path.dirname(__file__).replace('\\','/')
+parent_dir = os.path.abspath(os.path.join(curr_dir, os.pardir))
+root_dir = os.path.abspath(os.path.join(parent_dir, os.pardir))
+sys.path.append(root_dir)
+# Import functions to set env vars, modules, commands
+from common.scripts.parse_yaml import *
+config_path = curr_dir + '/slurm_gpu_config.yaml'
 
 @rfm.simple_test
 class gpu_count_check(rfm.RunOnlyRegressionTest):
@@ -22,47 +28,51 @@ class gpu_count_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check access and running of jobs on various GPU partitions'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        #test_name = self.display_name.split(' ')[0]
+
+        sys_info = set_system(config_path, 'gpu_count_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
 
         # The executable is meaningless, but needs to be set for test to run
         # Output from postrun_cmds is what is relevant to the test
         self.executable = 'echo'
         self.executable_opts = ['hello world']
         
-        # Set command to list all GPUs available to the job
-        _, _, cmds = set_env(mpi = False, sched = True, gpu = True)
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        if modules != []:
+            self.modules = modules
         if cmds != []:
-            self.postrun_cmds = cmds
+            self.prerun_cmds = cmds
 
-        # Handle job config for both exclusive and shared access
+        # Job options
+        job_info = get_job_options(config_path, 'gpu_count_check')
+        self.acct_str = job_info['account']
         if self.access == 'exclusive':
             self.ngpus = self.exclusive_gpus_per_node
             self.exclusive_access = True
         else:
             self.ngpus = 1
-        self.num_tasks = 1
-        self.time_limit = '2m'
+        self.num_nodes = job_info['num-nodes']
+        self.num_tasks = job_info['num-tasks']
+        self.time_limit = job_info['time-limit']
         
         self.tags = {'gpu'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    # Check for both exclusive and shared node access
-    access = parameter(['exclusive', 'shared'])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_count_check')
+    access = parameter(params['access'])
 
     # Job options
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
-            '--nodes=1',
+            f'--nodes={self.num_nodes}',
             f'--gres=gpu:{self.ngpus}',
             f'--account={self.acct_str}',
         ]
@@ -83,15 +93,13 @@ class gpu_cpu_count_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check the no. of CPUs assigned matches value corresponding to requested no. of GPUs'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
-        self.all_gpu_nodes = 'nodelist_str' # String of all nodes in the partition e.g. 'nid[0000, 0001, 0002, ...]'
+        sys_info = set_system(config_path, 'gpu_cpu_count_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node']
+        self.cpus_per_gpu = sys_info['cpus-per-gpu']
+        self.all_gpu_nodes = sys_info['all-gpu-nodes'] # String of all nodes in the partition e.g. 'nid[0000, 0001, 0002, ...]'
         self.num_gpu_nodes = len(self.all_gpu_nodes.split(','))
 
         # The executable is meaningless, but needs to be set for test to run
@@ -100,36 +108,40 @@ class gpu_cpu_count_check(rfm.RunOnlyRegressionTest):
         self.executable_opts = ['hello world']
         
         # Set command to list all GPUs available to the job
-        _, _, cmds = set_env(mpi = False, sched = True, gpu = True)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
+        if modules != []:
+            self.modules = modules
         if cmds != []:
-            self.postrun_cmds = cmds
+            self.prerun_cmds = cmds
 
         # Handle job config for both exclusive and shared access
+        job_info = get_job_options(config_path, 'gpu_cpu_count_check')
+        self.acct_str = job_info['account']
         if self.ngpus == self.exclusive_gpus_per_node:
             self.exclusive_access = True
         self.num_tasks = self.ngpus
-        self.time_limit = '2m'
+        self.nun_nodes = job_info['num-nodes']
+        self.time_limit = job_info['time-limit']
 
         # First one should run successfully, second fail with too many processors
         self.postrun_cmds += [
-            f'srun -n {self.num_tasks * 8} -c 1 hostname',
-            f'srun -n {self.num_tasks * 8 + 1} - c 1 hostname',
+            f'srun -n {self.num_tasks * self.cpus_per_gpu} -c 1 hostname',
+            f'srun -n {self.num_tasks * self.cpus_per_gpu + 1} - c 1 hostname',
             f'scontrol show nodes {self.all_gpu_nodes} | grep Gres= | sort | uniq -c'
         ]
         
         self.tags = {'gpu'}
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    # Test shared and exclusive access, odd and even no. of GPUs, more and less than half the node
-    ngpus = parameter([1, 6, 8])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_cpu_count_check')
+    ngpus = parameter(params['num-gpus'])
 
     # Job options
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
-            '--nodes=1',
+            f'--nodes={self.num_nodes}',
             f'--gres=gpu:{self.ngpus}',
             f'--account={self.acct_str}',
         ]
@@ -150,20 +162,18 @@ class gpu_cpu_count_check(rfm.RunOnlyRegressionTest):
         ])
 
 @rfm.simple_test
-class gpu_affinity_base_check(rfm.RegressionTest):
+class gpu_affinity_check(rfm.RegressionTest):
     def __init__(self):
 
         self.descr = 'Base test class for GPU affinity tests'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        sys_info = set_system(config_path, 'gpu_affinity_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
 
         # Compilation - build from Makefile
         self.build_system = 'Make'
@@ -182,6 +192,8 @@ class gpu_affinity_base_check(rfm.RegressionTest):
         self.executable_opts = ['| sort -n']
 
         # Job options - differ between whether running in exclusive or shared access
+        job_info = get_job_options(config_path, 'gpu_affinity_check')
+        self.acct_str = job_info['account']
         if self.access == 'exclusive':
             self.exclusive_access = True
             self.ngpus_per_node = self.exclusive_gpus_per_node
@@ -191,15 +203,13 @@ class gpu_affinity_base_check(rfm.RegressionTest):
             self.ngpus_per_node = 2
             self.ntasks_per_node = 2
             self.num_tasks = 2
-        self.ngpus_per_task = 1
-        self.num_cpus_per_task = self.cpus_per_gpu
-        self.num_nodes = 1
+        self.ngpus_per_task = job_info['num-gpus-per-task']
+        self.num_nodes = job_info['num-nodes']
+        self.ncpus_per_task = self.cpus_per_gpu
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -207,8 +217,9 @@ class gpu_affinity_base_check(rfm.RegressionTest):
         
         self.tags = {'gpu'}
 
-    # Test affinity for both exclusive and shared node access
-    access = parameter(['exclusive', 'shared'])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_affinity_check')
+    access = parameter(params['access'])
 
     # Set job options
     @run_before('run')
@@ -230,16 +241,8 @@ class gpu_affinity_base_check(rfm.RegressionTest):
     @sanity_function
     def check_pinning(self):
         # Dictionary of CPUs associated with each GPU on a node
-        gpu_dict = {
-            'd1': [0,1,2,3,4,5,6,7],
-            'd6': [8,9,10,11,12,13,14,15],
-            'c9': [16,17,18,19,20,21,22,23],
-            'ce': [24,25,26,27,28,29,30,31],
-            'd9': [32,33,34,35,36,37,38,39],
-            'de': [40,41,42,43,44,45,46,47],
-            'c1': [48,49,50,51,52,53,54,55],
-            'c6': [56,57,58,59,60,61,62,63],
-        }
+        sys_info = set_system(config_path, 'gpu_affinity_check')
+        gpu_dict = sys_info['gpu-cpu-association']
 
         # regex pattern of MPI rank -> CPU pinning output
         mpi_cpu = sn.evaluate(
@@ -275,14 +278,12 @@ class gpu_affinity_array_check(rfm.RegressionTest):
         self.descr = 'GPU affinity test for job arrays'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        sys_info = set_system(config_path, 'gpu_affinity_array_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
 
         # Compilation - build from Makefile
         self.build_system = 'Make'
@@ -301,21 +302,21 @@ class gpu_affinity_array_check(rfm.RegressionTest):
         self.executable_opts = ['| sort -n']
 
         # Job options
+        job_info = get_job_options(config_path, 'gpu_affinity_array_check')
+        self.acct_str = job_info['account']
         self.num_nodes = self.job_config[0]
         self.num_array_tasks = self.job_config[1]
         self.ngpus_per_node = self.job_config[2]
         self.ntasks_per_node = self.job_config[3]
         self.num_tasks = self.ntasks_per_node * self.num_nodes
         self.ngpus_per_task = self.ngpus_per_node // self.ntasks_per_node
-        self.num_cpus_per_task = self.cpus_per_gpu * self.ngpus_per_task
+        self.ncpus_per_task = self.cpus_per_gpu * self.ngpus_per_task
         if self.ngpus_per_node == self.exclusive_gpus_per_node:
             self.exclusive_access = True
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -323,19 +324,10 @@ class gpu_affinity_array_check(rfm.RegressionTest):
 
         self.tags = {'gpu'}
 
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_affinity_array_check')
+    job_config = parameter(params['job-array-config'])
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    # job_config = [`num_nodes`, `num_array_tasks`, `ngpus_per_node`, `ntasks_per_node`]
-    # Single-node exclusive and shared access tests (the array fills out an entire node and part of a node)
-    # One and multiple GPUs per task tests
-    job_config = parameter([
-        [1, 4, 2, 2], [1, 2, 3, 3],
-        [2, 4, 4, 4], [2, 2, 6, 6],
-        [1, 4, 2, 1], [1, 2, 2, 1],
-        [2, 4, 4, 2], [2, 2, 2, 1],
-    ])
 
     # Set job options
     @run_before('run')
@@ -358,16 +350,8 @@ class gpu_affinity_array_check(rfm.RegressionTest):
     @sanity_function
     def check_pinning(self):
         # Dictionary of CPUs in correct L3 cache for each GPU
-        gpu_dict = {
-            'd1': [0,1,2,3,4,5,6,7],
-            'd6': [8,9,10,11,12,13,14,15],
-            'c9': [16,17,18,19,20,21,22,23],
-            'ce': [24,25,26,27,28,29,30,31],
-            'd9': [32,33,34,35,36,37,38,39],
-            'de': [40,41,42,43,44,45,46,47],
-            'c1': [48,49,50,51,52,53,54,55],
-            'c6': [56,57,58,59,60,61,62,63],
-        }
+        sys_info = set_system(config_path, 'gpu_affinity_array_check')
+        gpu_dict = sys_info['gpu-cpu-association']
 
         # regex pattern of MPI rank -> CPU pinning output
         mpi_cpu = sn.evaluate(
@@ -402,15 +386,13 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
         self.descr = 'GPU affinity test for job packing (job steps)'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['PrgEnv-gnu']
-        self.acct_str = 'account_name' # Account to charge job to
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
-        self.mem_per_gpu = 29440 # Memory per GPU in MB
+        sys_info = set_system(config_path, 'gpu_affinity_jobpacking_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
+        self.mem_per_gpu = sys_info['mem-per-gpu'] # Memory of each GPU in MB
 
         # Compilation
         self.build_system = 'Make'
@@ -429,6 +411,8 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
         self.executable_opts = ['| sort -n &']
 
         # Job options
+        job_info = get_job_options(config_path, 'gpu_affinity_jobpacking_check')
+        self.acct_str = job_info['account']
         self.num_nodes = self.job_config[0]
         self.ngpus_per_node_1 = self.job_config[1]
         self.ngpus_per_node_2 = self.job_config[2]
@@ -442,32 +426,24 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
         self.ntasks_1 = self.ntasks_per_node_1 * self.num_nodes
         self.ntasks_2 = self.ntasks_per_node_2 * self.num_nodes
         self.num_tasks = self.ntasks_1 + self.ntasks_2
-        self.num_cpus_per_task = self.cpus_per_gpu * self.ngpus_per_task
+        self.ncpus_per_task = self.cpus_per_gpu * self.ngpus_per_task
         self.mem_1 = self.ngpus_per_node_1 * self.mem_per_gpu
         self.mem_2 = self.ngpus_per_node_2 * self.mem_per_gpu
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        iomp = True if self.num_cpus_per_task > 1 else False
-        env_vars, modules, cmds = set_env(mpi = True, omp = iomp, sched = True, gpu = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
             self.prerun_cmds = cmds
             
-       self.tags = {'gpu'}
+        self.tags = {'gpu'}
             
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    # Test parameters - job_config = [`num_nodes`, `ngpus_per_node` (for each of the two jobsteps), `ngpus_per_task`]
-    job_config = parameter([
-        [1, 3, 1, 1], [1, 5, 3, 1],
-        [2, 3, 1, 1], [2, 5, 3, 1],
-        [1, 4, 2, 2], [1, 6, 2, 2],
-        [2, 4, 2, 2], [2, 6, 2, 2],
-    ])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_affinity_jobpacking_check')
+    job_config = parameter(params['job-packing-config'])
+    #job_config = parameter([[params['num-nodes'][i], params['num-gpus-node1'][i], params['num-gpus-node2'][i], params['num-gpus-per-task'][i]] for i in range(8)])
 
     # Set job options
     @run_before('run')
@@ -500,16 +476,8 @@ class gpu_affinity_jobpacking_check(rfm.RegressionTest):
     @sanity_function
     def check_pinning(self):
         # Dictionary of CPUs in correct L3 cache for each GPU
-        gpu_dict = {
-            'd1': [0,1,2,3,4,5,6,7],
-            'd6': [8,9,10,11,12,13,14,15],
-            'c9': [16,17,18,19,20,21,22,23],
-            'ce': [24,25,26,27,28,29,30,31],
-            'd9': [32,33,34,35,36,37,38,39],
-            'de': [40,41,42,43,44,45,46,47],
-            'c1': [48,49,50,51,52,53,54,55],
-            'c6': [56,57,58,59,60,61,62,63],
-        }
+        sys_info = set_system(config_path, 'gpu_affinity_jobpacking_check')
+        gpu_dict = sys_info['gpu-cpu-association']
 
         # regex pattern of MPI rank -> CPU pinning output
         mpi_cpu = sn.evaluate(sn.findall(r'.*MPI Rank ([0-9]+).*Thread 0.*placement = ([0-9]+)', self.stdout))
@@ -542,14 +510,12 @@ class gpu_accounting_check(rfm.RunOnlyRegressionTest):
         self.descr = 'Test to check the SLURM accounting for GPU jobs'
         self.maintainers = ['Craig Meyer']
 
-        #############################################################
-        # THESE OPTIONS ARE SITE/SYSTEM-SPECIFIC AND NEED TO BE SET #
-        #############################################################
-        self.valid_systems = ['system:gpu']
-        self.valid_prog_environs = ['*']
-        self.acct_str = 'account_name'
-        self.exclusive_gpus_per_node = 8 # Maximum number of GPUs available per node
-        self.cpus_per_gpu = 8 # Number of CPUs associated with each GPU
+        sys_info = set_system(config_path, 'gpu_accounting_check')
+        # Valid systems and PEs test will run on
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        self.exclusive_gpus_per_node = sys_info['exclusive-gpus-per-node'] # Maximum number of GPUs available per node
+        self.cpus_per_gpu = sys_info['cpus-per-gpu'] # Number of CPUs associated with each GPU
 
         # Execution - sleep for 3 minutes
         self.executable = 'sleep'
@@ -557,14 +523,18 @@ class gpu_accounting_check(rfm.RunOnlyRegressionTest):
         self.executable_opts = [f'{self.runtime}s']
 
         # Job options
+        job_info = get_job_options(config_path, 'gpu_accounting_check')
+        self.acct_str = job_info['account']
+        self.num_nodes = job_info['num-nodes']
+        self.ncpus_per_task = job_info['num-cpus-per-task']
+        self.time_limit = job_info['time-limit']
         if self.ngpus == self.exclusive_gpus_per_node:
             self.exclusive_access = True
         self.num_tasks = self.ngpus
-        self.num_cpus_per_task = 1
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
-        env_vars, modules, cmds = set_env(mpi = False, sched = True)
-        self.variables = {env.split('=')[0]: env.split('=')[1] for env in env_vars}
+        env_vars, modules, cmds = set_env(config_path)
+        self.variables = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -574,33 +544,34 @@ class gpu_accounting_check(rfm.RunOnlyRegressionTest):
         self.ncpus = self.ngpus * self.cpus_per_gpu * 2
         # Pre-decimal Value output from `sacct` command, given runtime and conversion from seconds to hours
         self.val = floor(self.runtime * self.ncpus / 3600 / 2 * 10) / 10
-        self.time_limit = '5m'
 
         # Extract job accounting information with sacct
-        self.postrun_cmds = ['sacct -X -j $SLURM_JOB_ID --partition=gpu --format=CPUTimeRaw | grep -v batch | awk \'{sum=$1}END{print sum/3600/2}\'']
+        self.postrun_cmds = ['sacct -X -j $SLURM_JOB_ID --format=CPUTimeRaw | grep -v batch | awk \'{sum=$1}END{print sum/3600/2}\'']
         
 
-    ###########################################
-    # SET PARAMETER(S) TO YOUR DESIRED VALUES #
-    ###########################################
-    # Test exclusive, shared and single-/multi-gpu
-    ngpus = parameter([1, 2, 8])
+    # Test parameter(s)
+    params = get_test_params(config_path, 'gpu_accounting_check')
+    ngpus = parameter(params['num-gpus'])
     
-    ###########################
-    # RECOMMENDED JOB OPTIONS #
-    ###########################
+    # Job options
     @run_before('run')
     def set_job_opts(self):
         self.job.options = [
-            '--nodes=1',
+            f'--nodes={self.num_nodes}',
             f'--gres=gpu:{self.ngpus}',
             f'--account={self.acct_str}',
         ]
 
     @run_before('run')
     def set_srun_opts(self):
-        self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
+        self.job.launcher.options = [f'-c {self.ncpus_per_task}']
     
     @sanity_function
     def assert_account_charge(self):
-        return sn.assert_found(f'{self.val}', self.stdout)
+        # Sometimes the actual runtime is > self.runtime by enough to affect self.val calculation (some SLURM overhead?)
+        # This is an issue for exclusive, where it only takes 6 extra seconds for the value in the sanity check to change, whereas it 
+        # takes over 20 extra seconds when using 2 GPUs. Variance in submission times (anecdotally) seem to be up to 15 seconds
+        if self.ngpus == 8:
+            return sn.assert_found(str(self.val)[0] + '.', self.stdout)
+        else:
+            return sn.assert_found(str(self.val), self.stdout)

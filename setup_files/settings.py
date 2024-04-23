@@ -23,6 +23,12 @@ site_configuration = {
                         'PrgEnv-gnu',
                         'PrgEnv-aocc'
                     ],
+                    'processor': {
+                        'num_cpus': 256,
+                        'num_cpus_per_core': 2,
+                        'num_cpus_per_socket': 128,
+                        'num_sockets': 2
+                    },
                     'descr': 'Login nodes',
                     'max_jobs': 1,
                     'launcher': 'local'
@@ -37,10 +43,36 @@ site_configuration = {
                         'PrgEnv-gnu',
                         'PrgEnv-aocc'
                     ],
+                    'processor': {
+                        'num_cpus': 256,
+                        'num_cpus_per_core': 2,
+                        'num_cpus_per_socket': 128,
+                        'num_sockets': 2
+                    },
                     'descr': 'Standard compute nodes',
                     'max_jobs': 32,
                     'launcher': 'srun'
                 },
+                {
+                    'name': 'gpu',
+                    'scheduler': 'slurm',
+                    'modules': [],
+                    'access': [],
+                    'environs': [
+                        'PrgEnv-cray',
+                        'PrgEnv-gnu',
+                        'PrgEnv-aocc'
+                    ],
+                    'processor': {
+                        'num_cpus': 256,
+                        'num_cpus_per_core': 2,
+                        'num_cpus_per_socket': 128,
+                        'num_sockets': 2
+                    },
+                    'descr': 'GPU compute nodes',
+                    'max_jobs': 8,
+                    'launcher': 'srun'                    
+                }
             ]
         },
     ],
