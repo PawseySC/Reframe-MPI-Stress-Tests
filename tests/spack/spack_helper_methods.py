@@ -14,11 +14,11 @@ from common.scripts.parse_yaml import *
 config_path = curr_dir + '/spack_config.yaml'
 
 
-def get_env_vars(filepath):
+def get_spack_info(filepath):
 
     data = load_yaml(filepath)
-    env_vars = data['environment']['env-vars']
-    return env_vars
+    spack_info = data['spack-setup']
+    return spack_info
 
 def get_sw_path_format(filepath):
 
@@ -72,10 +72,20 @@ def set_path(path_dict, pkg_spec):
 
 # Get the full set of abstract specs for an environemtn from the spack.yaml file
 def get_abstract_specs():
-    
+
+    spack_dict = get_spack_info(config_path)
+    yaml_dir = spack_dict['spack-yaml-dir']
+
     # Abstract specs we wish to install
     abstract_specs = []
-    yaml_file = curr_dir + '/src/spack.yaml'
+
+    if os.getenv('SPACK_ENV') is not None:
+        env = os.getenv('SPACK_ENV')
+        #yaml_file = curr_dir + f'/src/environments/{env}/spack.yaml'
+        yaml_file = yaml_dir + f'/{env}/spack.yaml'
+    else:
+        #yaml_file = curr_dir + '/src/spack.yaml'
+        yaml_file = yaml_dir + '/spack.yaml'
     with open(yaml_file, "r") as stream:
         data = yaml.safe_load(stream)
 
@@ -108,9 +118,19 @@ def get_abstract_specs():
 # Get spec (plus full hash) for each root package in an environment from spack.lock file
 def get_root_specs():
 
+    spack_dict = get_spack_info(config_path)
+    json_dir = spack_dict['spack-lock-dir']
+
     # Fully concretised spacks generated from concretisation
     root_specs = []
-    json_file = curr_dir + '/src/spack.lock'
+
+    if os.getenv('SPACK_ENV') is not None:
+        env = os.getenv('SPACK_ENV')
+        #json_file = curr_dir + f'/src/environments/{env}/spack.lock'
+        json_file = json_dir + f'/{env}/spack.lock'
+    else:
+        #json_file = curr_dir + '/src/spack.lock'
+        json_file = json_dir + f'/spack.lock'
     with open(json_file) as json_data:
         data = json.load(json_data)
     
@@ -127,8 +147,17 @@ def get_root_specs():
 # Get full concretised spec (plus full hash) for each spec from spack.lock file
 def get_concretised_specs():
 
+    spack_dict = get_spack_info(config_path)
+    json_dir = spack_dict['spack-lock-dir']
+
     # Fully concretised spacks generated from concretisation
-    json_file = curr_dir + '/src/spack.lock'
+    if os.getenv('SPACK_ENV') is not None:
+        env = os.getenv('SPACK_ENV')
+        #json_file = curr_dir + f'/src/environments/{env}/spack.lock'
+        json_file = json_dir + f'/{env}/spack.lock'
+    else:
+        #json_file = curr_dir + '/src/spack.lock'
+        json_file = json_dir + '/spack.lock'
     with open(json_file) as json_data:
         data = json.load(json_data)
     concretised_specs = data['concrete_specs']
@@ -208,12 +237,12 @@ def build_root_spec(conc_spec, param_dict):
 def get_dependency_module_path(pkg_info, conc_specs, root_spec):
 
     # Get required environment variables
-    env_dict = get_env_vars(config_path)
-    python_ver = env_dict['python-version']
+    spack_dict = get_spack_info(config_path)
+    python_ver = spack_dict['python-version']
+    mod_yaml_file = spack_dict['module-yaml-path']
 
     # Master module file describing format of full module path across all environments
-    yaml_file = curr_dir + '/src/modules.yaml'
-    with open(yaml_file, "r") as stream:
+    with open(mod_yaml_file, "r") as stream:
         mod_data = yaml.safe_load(stream) 
     # Projections describe module paths for each package
     projections = mod_data['modules']['default']['lmod']['projections']
@@ -296,16 +325,16 @@ def get_dependency_module_path(pkg_info, conc_specs, root_spec):
 def get_module_dependencies(pkg_module_path):
 
     # Get required environment variables
-    env_dict = get_env_vars(config_path)
-    python_ver = env_dict['python-version']
+    spack_dict = get_spack_info(config_path)
+    python_ver = spack_dict['python-version']
+    mod_yaml_file = spack_dict['module-yaml-path']
 
     # Get root specs from the environment this package is in
     root_specs = get_root_specs()
     conc_specs = get_concretised_specs()
 
     # Master module file describing format of full module path across all environments
-    yaml_file = curr_dir + '/src/modules.yaml'
-    with open(yaml_file, "r") as stream:
+    with open(mod_yaml_file, "r") as stream:
         mod_data = yaml.safe_load(stream)    
     # Projections describe module paths for each spec
     projections = mod_data['modules']['default']['lmod']['projections']
@@ -369,8 +398,9 @@ def get_module_dependencies(pkg_module_path):
 def get_module_paths():
 
     # Get required environment variables
-    env_dict = get_env_vars(config_path)
-    python_ver = env_dict['python-version'] # Some python packages include python version in their name (e.g. mpi4py)
+    spack_dict = get_spack_info(config_path)
+    python_ver = spack_dict['python-version'] # Some python packages include python version in their name (e.g. mpi4py)
+    mod_yaml_file = spack_dict['module-yaml-path']
 
     # Get root specs for this environment (from environments/{env}/spack.lock file)
     # Three lists - full concretised spec, reduced list in format {name}/{version}, and hash
@@ -399,8 +429,7 @@ def get_module_paths():
     # Matching concretised specs to full module path #
     ##################################################
     # Master module file describing format of full module path across all environments
-    yaml_file = curr_dir + '/src/modules.yaml'
-    with open(yaml_file, "r") as stream:
+    with open(mod_yaml_file, "r") as stream:
         mod_data = yaml.safe_load(stream)    
     # Projections describe module paths for each spec
     projections = mod_data['modules']['default']['lmod']['projections']
@@ -480,4 +509,4 @@ def get_module_paths():
     return full_mod_paths
 
 
-get_software_path(['beast1', '1.10.4.lua'])
+#get_software_path(['beast1', '1.10.4.lua'])
