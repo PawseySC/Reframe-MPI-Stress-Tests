@@ -20,7 +20,6 @@ Option:
 if [ $# -eq 0 ] # No arguments passed, so run all tests
 then
   mode="all tests"
-  echo "Running all tests"
 elif [ $# -eq 1 ] # Script is called with help
 then
   case $1 in
@@ -81,19 +80,20 @@ repo_root_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )/.." &> /dev/null && 
 rfm_settings_file=${repo_root_dir}/setup_files/settings.py
 
 # Call Reframe based on passed arguments
+# Exclude spack related tags via -T option since they have a separate dedicated script to run
 if [[ "$mode" == "test file" ]]; then
   printf "Running tests from test file $val \n\n"
-  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/$val -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/$val -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "test category" ]]; then
   printf "Running tests from test category $val \n\n"
-  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -t $val -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -t $val -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "test name" ]]; then
   printf "Running test $val \n\n"
-  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n $val -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n $val -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "multiple tests" ]]; then
   printf "Running tests $val \n\n"
-  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n "$val" -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n "$val" -T spack -r --performance-report $reframe_opts
 else
   printf "Running all tests\n\n"
-  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -T spack -r --performance-report $reframe_opts
 fi
