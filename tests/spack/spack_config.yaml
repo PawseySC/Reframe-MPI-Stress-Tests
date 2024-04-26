@@ -19,27 +19,26 @@ spack-setup:
   module-yaml-path: tests/spack/src/modules.yaml
   python-version: "3.10.10"
 # Define segments of the full path for software and corresponding entries in spack.lock concretsied specs which hold the values
-# For instance, for compiler-name-version, the value in python syntax is spec['compiler']['name'] + "-" + spec['compiler']['version']
-# The default values here follow the pattern used on Setonix, replicated in a smaller scale for these tests
-# For, instance, a package for pytohn/3.10.10 on a linux SLES 15 system with zen3 architecture compiled with gcc/12.2.0 and hash al58hy0vc36 will be located at
+# The default values here follow the pattern used on Setonix
+# Values in braces are keys to the spec dictionary, with commas separating different levels and other characters are part of the directory string.
+# For instance, a package for python/3.10.10 on a linux SLES 15 system with zen3 architecture compiled with gcc/12.2.0 and hash al58hy0vc36 will be located at
 #   {base-directory}/{platform-os-arch}-{compiler-name-version}/{package-name-version-hash}
 #   sw_stack/software/linux-sles15-zen3/gcc-12.2.0/python-3.10.10-al58hy0vc36
 # These entries should be edited to suit the software stack organisation on your system
 software-path:
   base-directory: "sw_stack/software" # part of path common to all packages
-  platform-os-arch: "{arch,platform}-{arch,platform_os}-{arch,target,name}"
+  platform-os-arch: "{arch,platform}-{arch,platform_os}-{arch,target,name}" # spec['arch']['platform'] + '-' + spec['arch']['platform_os'] + '-' + spec['arch']['target']['name'] in python
   compiler-name-version: "{compiler,name}-{compiler,version}"
   package-name-version-hash: "{name}-{version}-{hash}"
 # Define segments of the full path for modules and corresponding entries in spack.lock concretsied specs which hold the values
-# For instance, for architecture, the value in python syntax is spec['arch']['target']['name']
-# The default values here follow the pattern used on Setonix, replicated in a smaller scale for these tests
-# For, instance, a package for python/3.10.10 with zen3 architecture compiled with gcc/12.2.0 and hash al58hy0vc36 will have module at
+# The default values here follow the pattern used on Setonix
+# For instance, a package for python/3.10.10 with zen3 architecture compiled with gcc/12.2.0 will have module at
 #   {base-directory}/{architecture}/{compiler-name}/{compiler-version}
 #   sw_stack/modules/zen3/gcc/12.2.0
-# followed by the projection defined in the modules.yaml file for the spec in question (for this example, "programming-languages/python/3.10.10.lua")
+# followed by the projection defined in the modules.yaml file for the spec in question
 # These entries should be edited to suit the software stack organisation on your system
 module-path:
   base-directory: "sw_stack/modules" # part of path common to all packages
   architecture: "{arch,target,name}"
-  compiler-name: "{compiler,name}"
+  compiler-name: "{compiler,name}" # spec['compiler']['name'] in pythom
   compiler-version: "{compiler,version}"
