@@ -13,25 +13,36 @@ sys.path.append(root_dir)
 from common.scripts.parse_yaml import *
 config_path = curr_dir + '/spack_config.yaml'
 
-
+# Get spack info (directory of spack.yaml and spack.lock files and path of modules.yaml file)
 def get_spack_info(filepath):
 
     data = load_yaml(filepath)
     spack_info = data['spack-setup']
     return spack_info
 
+# Get format of full path to installed software/libraries
 def get_sw_path_format(filepath):
 
     data = load_yaml(filepath)
     lib_dict = data['software-path']
     return lib_dict
 
+# Get format of full path to module file
 def get_module_path_format(filepath):
 
     data = load_yaml(filepath)
     mod_path_dict = data['module-path']
     return mod_path_dict
 
+# Get basic sanity commands to use in baseline sanity check
+def get_pkg_cmds(filepath):
+
+    data = load_yaml(filepath)
+    pkg_cmds = data['commands']
+    return pkg_cmds
+
+# Build software or module path for a package
+# path_dict is from spack_config.yaml file and pkg_spec is the concretised spec of the package
 def set_path(path_dict, pkg_spec):
 
     path = ''
@@ -507,6 +518,3 @@ def get_module_paths():
         full_mod_paths[i] = mod_paths[i] + matching_mod_paths[i] + '.lua'
 
     return full_mod_paths
-
-
-#get_software_path(['beast1', '1.10.4.lua'])

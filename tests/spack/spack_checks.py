@@ -24,19 +24,6 @@ from common.scripts.parse_yaml import *
 config_path = curr_dir + '/spack_config.yaml'
 
 
-# Each entry of dictionary is list containing command and regex pattern to check for that package
-# Format of list is [command, command option/argument, output]
-# Some lists have an extra entry, STDERR, which denotes the output is found in stderr rather than stdout
-modules_dict = {
-    'beast1': ['beast', '-help', 'Example: beast test.xml'],
-    'beast2': ['beast', '-help', 'Example: beast test.xml'],
-    'exabayes': ['exabayes', '-h', 'This is ExaBayes, version'],
-    'examl': ['examl', '-h', 'This is ExaML version'],
-    'library': ['ldd', 'lib/lib.so'],
-    'software package which outputs to stderr': ['command', 'option', 'output', 'STDERR'],
-}
-
-
 # Test to check that every abstract spec in spack.yaml file 
 # has a  matching concretised spec in spack.lock file
 @rfm.simple_test
@@ -227,13 +214,14 @@ class baseline_sanity_check(rfm.RunOnlyRegressionTest):
         # Get the base package name from full module path
         self.base_name = self.mod.split('/')[-2]
         # Use dictionary to set executable
-        self.executable = modules_dict[self.base_name][0]
+        pkg_cmds = get_pkg_cmds(curr_dir + '/pkg_cmds.yaml')
+        self.executable = pkg_cmds[self.base_name][0]
         # Set the executable options, which depends on if it's software or library
         if self.executable == 'ldd':
             sw_path = get_software_path(self.mod.split('/')[-2:])
-            self.executable_opts = [sw_path + '/' + modules_dict[self.base_name][1]]
+            self.executable_opts = [sw_path + '/' + pkg_cmds[self.base_name][1]]
         else:
-            self.executable_opts = [modules_dict[self.base_name][1]]
+            self.executable_opts = [pkg_cmds[self.base_name][1]]
         
         self.tags = {'spack', 'installation', 'software_stack'}
     
