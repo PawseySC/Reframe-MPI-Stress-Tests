@@ -51,6 +51,29 @@ Alternatively, one can utilise the script located at `tests/run_tests.sh`. This 
 ./tests/run_tests.sh --test-file slurm/slurm_gpu_checks --options "--output=DIR, --keep-stage-files, --perflogdir=DIR"
 ```
 
+A separate script, `run_spack_tests.sh` is dedicated to the spack tests included in this repo. These tests make use of modules and system software/libraries which have been installed on the local system they are being run on, therefore will not work straightaway. They require a bit more work, and so a separate run script is set aside for them. Its usage is as follows:
+
+```
+# If all spack packages are in a single build environment (pass no arguments)
+./tests/run_spack_tests.sh
+
+# If spack packages are spread across many build environments (pass an argument specifying the list of environments)
+env_list="
+utils
+num_libs
+python
+io_libs
+langs
+apps
+devel
+bench
+s3_clients
+astro
+bio
+"
+./tests/run_spack_tests.sh "${env_list[@]}"
+```
+
 ### Configuring the tests for your system
 
 The tests have been written in a generalised way to try and make them as portable as possible. Nevertheless, there are some steps required to run the tests on your system. First, the `settings.py` configuration file will need to be modified for the system one will be running the tests on. A dummy system entry has been provided.
