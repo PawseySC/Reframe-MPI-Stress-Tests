@@ -30,6 +30,10 @@ This test does not inherit from `MPI_Comms_Base`. This test was developed when w
 
 This test is designed around an issue that we have observed on Setonix for at least a year and is still present. MPI codes using a large enough `MPI_COMM_WORLD` with a large enough number of processes and each process sending and receiving a large enough amount of data can hang. This test has one test parameter `ntasks_per_node`.
 
+### `LargeCommLibfabric`
+
+This test is designed around an issue that we have observed on Setonix for at least a year and is still present. MPI codes using a large enough `MPI_COMM_WORLD` with a large enough number of processes and each process sending and receiving a large enough amount of data can sometimes crash while displaying libfabric errors. Unlike the similar `LargeCommHang` issue, this is not 100% reproducible. This test has one test parameter `ntasks_per_node`.
+
 ### `MemoryLeak`
 
 This test does not inherit from `MPI_Comms_Base`. This test was motivated by several observed instances of programs failing with "out of memory" errors when it seemed like there should be memory available. Subsequent investigation showed that there was a memory "leak" of sorts when running MPI codes - memory being used by the code would not be released properly at certain points, leading to a build-up of consumed memory on the node(s) on which the program was running. This meant that over time, as more MPI codes were run on a node, the free memory on said nodes (even when nothing was being run) would decrease over time. The only way to fix the affected nodes was to reboot them. An upgrade to our libfabric library removed this persistent memory accumulation on a node.
