@@ -49,7 +49,7 @@ def set_path(path_dict, pkg_spec):
     # Iterate through every entry in the dictionary, which correspond to a level of the directory hierarchy
     for key, val in path_dict.items():
         # A fixed directory name for this level, independent of the specific package
-        if ('{' not in val) and ('}' not in val):
+        if ('[' not in val) and (']' not in val):
             path += (val + '/')
         # The directory name at this level is variable for different packages
         else:
@@ -61,9 +61,8 @@ def set_path(path_dict, pkg_spec):
                 nparts = len(parts)
                 for i in range(nparts):
                     # Go deeper into the spec dictionary until we are at the relevant info
-                    # In yaml file, different levels in the dictionary are separated by ','
                     segment = pkg_spec
-                    entries = parts[i].replace('{', '').replace('}', '').split(',')
+                    entries = [x.replace('[', '').replace(']', '') for x in parts[i].split('][')]
                     for entry in entries:
                         segment = segment[entry]
                     # Add '/' for final part of this level, otherwise '-'
@@ -73,7 +72,7 @@ def set_path(path_dict, pkg_spec):
                         path += (segment + '-')
             # A single entry from the spec constitutes the name of the directory at this level
             else:
-                entries = val.replace('{', '').replace('}', '').split(',')
+                entries = [x.replace('[', '').replace(']', '') for x in val.split('][')]
                 segment = pkg_spec
                 for entry in entries:
                     segment = segment[entry]
