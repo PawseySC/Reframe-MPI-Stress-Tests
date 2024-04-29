@@ -214,14 +214,15 @@ class baseline_sanity_check(rfm.RunOnlyRegressionTest):
         # Get the base package name from full module path
         self.base_name = self.mod.split('/')[-2]
         # Use dictionary to set executable
-        pkg_cmds = get_pkg_cmds(curr_dir + '/pkg_cmds.yaml')
-        self.executable = pkg_cmds[self.base_name][0]
+        self.pkg_cmds = get_pkg_cmds(curr_dir + '/pkg_cmds.yaml')
+        self.executable = self.pkg_cmds[self.base_name][0]
         # Set the executable options, which depends on if it's software or library
         if self.executable == 'ldd':
             sw_path = get_software_path(self.mod.split('/')[-2:])
-            self.executable_opts = [sw_path + '/' + pkg_cmds[self.base_name][1]]
+            self.executable_opts = [sw_path + '/' + self.pkg_cmds[self.base_name][1]]
         else:
-            self.executable_opts = [pkg_cmds[self.base_name][1]]
+            # Pipe stdout and stderr to stdout
+            self.executable_opts = [self.pkg_cmds[self.base_name][1] + ' 2>&1']
         
         self.tags = {'spack', 'installation', 'software_stack'}
     
@@ -247,8 +248,4 @@ class baseline_sanity_check(rfm.RunOnlyRegressionTest):
             return sn.assert_not_found('not found', self.stdout)
         # For software we do a basic check (e.g. --help or --version)
         else:
-            # Command output is in either stderr or stdout depending on particular package
-            if len(modules_dict[self.base_name]) > 3:
-                return sn.assert_found(modules_dict[self.base_name][2], self.stderr)
-            else:
-                return sn.assert_found(modules_dict[self.base_name][2], self.stdout)
+            return sn.assert_found(self.pkg_cmds[self.base_name][2], self.stdout)
