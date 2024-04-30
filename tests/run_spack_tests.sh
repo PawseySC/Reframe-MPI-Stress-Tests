@@ -48,13 +48,13 @@ shift $((OPTIND-1))
 if [ -z "$env_list" ]
 then
     printf "Running spack tests with a single build environemnt\n\n"
-    echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/spack/spack_checks.py -r $reframe_opts
+    reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/spack/spack_checks.py -r $reframe_opts
 else
     printf "Running spack tests for each of the following spack build environments: $env_list\n\n"
     for env in $env_list; do
         export SPACK_ENV=${env}
         printf "Running spack tests for spack build environment $env\n\n"
-        echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/spack/spack_checks.py -r $reframe_opts
+        reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/spack/spack_checks.py -r $reframe_opts
         unset SPACK_ENV
     done
 fi

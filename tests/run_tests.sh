@@ -23,7 +23,6 @@ value=""
 while getopts ':f:c:n:ae:o:' opt; do
   case "${opt}" in
     f)
-      echo "optarg = ${OPTARG}"
       mode="test file"
       value=${OPTARG}
       ;;
@@ -76,17 +75,17 @@ rfm_settings_file=${repo_root_dir}/setup_files/settings.py
 # Exclude spack related tags via -T option since they have a separate dedicated script to run
 if [[ "$mode" == "test file" ]]; then
   printf "Running tests from test file $value \n\n"
-  echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/$value -T spack -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests/$value -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "test category" ]]; then
   printf "Running tests from test category $value \n\n"
-  echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -t $value -T spack -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -t $value -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "single test" ]]; then
   printf "Running test $value \n\n"
-  echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n $value -T spack -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n $value -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "multiple tests" ]]; then
   printf "Running tests $value \n\n"
-  echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n "$value" -T spack -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -n "$value" -T spack -r --performance-report $reframe_opts
 elif [[ "$mode" == "all tests" ]]; then
   printf "Running all tests\n\n"
-  echo reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -T spack -r --performance-report $reframe_opts
+  reframe -C ${rfm_settings_file} -c ${repo_root_dir}/tests -T spack -r --performance-report $reframe_opts
 fi
