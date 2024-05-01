@@ -100,6 +100,23 @@ LargeCommHang:
   test-parameters:
     num-tasks-per-node: [85, 86]
 
+# Specific for LargeCommLibfabric test
+# NOTE: These specific values replicate the bug on Setonix
+LargeCommLibfabric:
+  executable-options:
+    ndata: '128'
+    iadjacent: '0'
+    iblocking: '3'
+    iverbose: '1'
+    idelay: '0'
+    irandom: '0'
+  job-options:
+    num-nodes: 5
+    exclusive: True
+    time-limit: 300 # seconds
+  test-parameters:
+    num-tasks-per-node: [149, 150]
+
 # Specific for MemoryLeak test
 MemoryLeak:
   executable-options:

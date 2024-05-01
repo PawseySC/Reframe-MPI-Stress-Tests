@@ -1,0 +1,51 @@
+---
+# ------------------- #
+# COMMON TO ALL TESTS #
+# ------------------- #
+system-parameters:
+  system:
+    - setonix:login
+  prog-environ:
+    - PrgEnv-gnu
+    #- PrgEnv-cray
+spack-setup:
+  # For single build-env: Absolute path of directory holding spack.yaml file defining abstract package specs
+  # For multiple build-envs: Directory where build-env directories are located
+  spack-yaml-dir: tests/spack/src 
+  # For single build-env: Absolute path of directory holding spack.lock file defining concretised specs
+  # For multiple build-envs: Directory where build-env directories are located
+  spack-lock-dir: tests/spack/src
+  # Absolute path of spack modules.yaml file
+  module-yaml-path: tests/spack/src/modules.yaml
+  python-version: "3.10.10"
+# Define segments of the full path for software and corresponding entries in spack.lock concretsied specs which hold the values
+# The default parameters and values here follow the pattern used on Setonix
+# Values in [] are keys to the spec dictionary, as in python syntax, with other characters part of the directory string
+# For instance, a package for python/3.10.10 on a linux SLES 15 system with zen3 architecture compiled with gcc/12.2.0 and hash al58hy0vc36 will be located at
+#   {base-directory}/{platform-os-arch}-{compiler-name-version}/{package-name-version-hash}
+#   sw_stack/software/linux-sles15-zen3/gcc-12.2.0/python-3.10.10-al58hy0vc36
+# where linux-sles15-zen3
+#   = [arch][platform]-[arch][platform_os]-[arch][target][name]
+#   = spec['arch']['platform'] + '-' + spec['arch']['platform_os'] + '-' + spec['arch']['target']['name']
+# where spec is the dictinoary of the package's concrete spec in python
+# These entries should be edited to suit the software stack organisation on your system
+software-path:
+  base-directory: "INSTALL_PREFIX" # part of path common to all packages
+  platform-os-arch: "[arch][platform]-[arch][platform_os]-[arch][target][name]"
+  compiler-name-version: "[compiler][name]-[compiler][version]"
+  package-name-version-hash: "[name]-[version]-[hash]"
+# Define segments of the full path for modules and corresponding entries in spack.lock concretsied specs which hold the values
+# The default values here follow the pattern used on Setonix
+# For instance, a package for python/3.10.10 with zen3 architecture compiled with gcc/12.2.0 will have module at
+#   {base-directory}/{architecture}/{compiler-name}/{compiler-version}
+#   sw_stack/modules/zen3/gcc/12.2.0
+# followed by the projection defined in the modules.yaml file for the spec in question. In this example gcc
+#   = [compiler][name]
+#   = spec['compiler']['name']
+# where spec is the dictinoary of the package's concrete spec in python
+# These entries should be edited to suit the software stack organisation on your system
+module-path:
+  base-directory: "INSTALL_PREFIX" # part of path common to all packages
+  architecture: "[arch][target][name]"
+  compiler-name: "[compiler][name]"
+  compiler-version: "[compiler][version]"

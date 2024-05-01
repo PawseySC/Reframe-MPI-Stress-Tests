@@ -1,0 +1,55 @@
+---
+# ------------------- #
+# COMMON TO ALL TESTS #
+# ------------------- #
+# Configure the environment
+environment:
+  mpi:
+    modules: ~
+    commands: ~
+    env-vars: {MPICH_ENV_DISPLAY: '1', MPICH_MEMORY_REPORT: '1', MPICH_OFI_VERBOSE: '1'}
+# Job options to pass to job script
+job-options:
+  account: pawsey0001
+
+# ------------------ #
+# FOR SPECIFIC TESTS #
+# ------------------ #
+
+# benchmarkInstructions
+benchmarkInstructions:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+  performance:
+    reference-value: 1
+  job-options:
+    account: pawsey0001
+  test-parameters:
+    instruction-string: ['fma']
+    oflag: ['-O0', '-O1', '-O2', '-O3']
+    arch: ['-march=znver2', '-march=znver3']
+    ompflags: ['', '-fopenmp']
+    mpiflags: ['', '-D_MPI']
+
+# benchmarkOptimisations
+benchmarkOptimisations:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
+    # This is flag for saving optimisation file - compiler dependent so may require editing
+    ofile-flag: '-fopt-info-all'
+  performance:
+    reference-value: 1
+  job-options:
+    account: pawsey0001
+  test-parameters:
+    optimisation-string: ['loop vectorized', 'unrolled loop']
+    oflag: ['-O0' ,'-O1', '-O2', '-O3']
+    arch: ['-march=znver2', '-march=znver3']
+    ompflags: ['', '-fopenmp']
+    mpiflags: ['', '-D_MPI']

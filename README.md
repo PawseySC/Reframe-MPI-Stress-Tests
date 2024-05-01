@@ -32,23 +32,52 @@ To run the tests one first needs to have a working ReFrame on their system - det
 Alternatively, one can utilise the script located at `tests/run_tests.sh`. This script runs a subset of tests based on the argument provided. All tests run in this script have the `--performance-report` reframe command-line argument set so that performance metrics are printed to the terminal in addition to being stored in performance log files. Below are examples of its usage:
 
 ```
-# Run all tests in this repo (pass no arguments)
-./tests/run_tests.sh
+# Run all tests in this repo
+./tests/run_tests.sh -a
 
 # Run all tests in a particular file  (path defined relative to /tests directory)
-./tests/run_tests.sh --test-file mpi/mpi_checks.py
+./tests/run_tests.sh -f mpi/mpi_checks.py
 
 # Run all tests of a particular category/tag
-./tests/run_tests.sh --test-category slurm
+./tests/run_tests.sh -t slurm
 
 # Run a single specific test (pass the test name as defined in the test file)
-./tests/run_tests.sh --test-name Pt2Pt
+./tests/run_tests.sh -n Pt2Pt
 
-# Run several specific tests (pass the list of test names as a '|'-delimited list)
-./tests/run_tests.sh --test-names "Pt2Pt|CollectiveComms"
+# Run several specific tests (pass the list of test names as a '|'-delimited list within double quotes "")
+./tests/run_tests.sh -n "Pt2Pt|CollectiveComms"
 
-# Run tests with extra (optional) arguments passed to Reframe (pass ',' separated string of options)
-./tests/run_tests.sh --test-file slurm/slurm_gpu_checks --options "--output=DIR, --keep-stage-files, --perflogdir=DIR"
+# Run tests with extra (optional) arguments passed to Reframe (pass ',' separated string of options within double quotes "")
+./tests/run_tests.sh -f slurm/slurm_gpu_checks -o "--output=DIR, --keep-stage-files, --perflogdir=DIR"
+```
+
+A separate script, `run_spack_tests.sh` is dedicated to the spack tests included in this repo. These tests make use of modules and system software/libraries which have been installed on the local system they are being run on, therefore will not work straightaway. They require a bit more work, and so a separate run script is set aside for them. Its usage is as follows:
+
+```
+# If all spack packages are in a single build environment (pass no arguments)
+./tests/run_spack_tests.sh
+
+# If spack packages are spread across many build environments (pass an argument specifying the list of environments)
+env_list="
+utils
+num_libs
+python
+io_libs
+langs
+apps
+devel
+bench
+s3_clients
+astro
+bio
+"
+./tests/run_spack_tests.sh  -e "${env_list[@]}"
+
+# Alternate format of passing list of environments
+./tests/run_spack_tests.sh -e "num_libs python apps"
+
+# Run tests with extra (optional) arguments passed to Reframe (pass ',' separated string of options within double quotes "")
+./tests/run_spack_tests.sh -o "--output=DIR, --keep-stage-files, --perflogdir=DIR"
 ```
 
 ### Configuring the tests for your system

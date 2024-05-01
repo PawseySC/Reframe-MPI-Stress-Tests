@@ -229,7 +229,7 @@ class DelayHang(MPI_Comms_Base):
         self.descr = 'Test to check MPI hangs observed in ASKAP workflow'
 
         # Get test-specific configuration
-        test_config = configure_test(curr_dir + '/mpi_config.yaml', 'DelayHang')
+        test_config = configure_test(config_path, 'DelayHang')
 
         # Compilation - source code file
         self.sourcepath = 'misc_tests.cpp'
@@ -261,7 +261,7 @@ class CorrectSends(rfm.RegressionTest):
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
         # Get test-specific configuration
-        test_config = configure_test(curr_dir + '/mpi_config.yaml', 'CorrectSends')
+        test_config = configure_test(config_path, 'CorrectSends')
 
         # Compilation - source code file
         self.sourcepath = 'misc_tests.cpp'
@@ -307,7 +307,7 @@ class CorrectSends(rfm.RegressionTest):
             self.prerun_cmds = cmds
 
     # Test parameter(s)
-    params = get_test_params(curr_dir + '/mpi_config.yaml', 'CorrectSends')
+    params = get_test_params(config_path, 'CorrectSends')
     send_mode = parameter(params['send-mode'])
 
 
@@ -359,7 +359,7 @@ class LargeCommHang(MPI_Comms_Base):
         self.descr = 'Test for large comm-world hang with MPI codes'
 
         # Get test-specific configuration
-        test_config = configure_test(curr_dir + '/mpi_config.yaml', 'LargeCommHang')
+        test_config = configure_test(config_path, 'LargeCommHang')
 
         # Compilation
         self.sourcepath = 'pt2pt.cpp'
@@ -376,7 +376,35 @@ class LargeCommHang(MPI_Comms_Base):
         self.time_limit = test_config['job-options']['time-limit']
 
     # Test parameter(s)
-    params = get_test_params(curr_dir + '/mpi_config.yaml', 'LargeCommHang')
+    params = get_test_params(config_path, 'LargeCommHang')
+    ntasks_per_node = parameter(params['num-tasks-per-node'])
+
+@rfm.simple_test
+class LargeCommLibfabric(MPI_Comms_Base):
+    def __init__(self, **kwargs):
+        super().__init__('LargeCommHang', **kwargs)
+
+        self.descr = 'Test for large MPI comm-world libfabric error'
+        
+        # Get test-specific configuration
+        test_config = configure_test(config_path, 'LargeCommLibfabric')
+
+        # Compilation
+        self.sourcepath = 'pt2pt.cpp'
+
+        # Execution
+        self.executable = 'pt2pt.out'
+        self.executable_opts = [' '.join([v for v in test_config['executable-options'].values()])]
+
+        # sbatch script directives
+        self.num_nodes = test_config['job-options']['num-nodes']
+        #self.num_tasks_per_node = self.ntasks_per_node
+        self.num_tasks = self.num_nodes * self.ntasks_per_node
+        self.exclusive_access = test_config['job-options']['exclusive']
+        self.time_limit = test_config['job-options']['time-limit']
+
+    # Test parameter(s)
+    params = get_test_params(config_path, 'LargeCommLibfabric')
     ntasks_per_node = parameter(params['num-tasks-per-node'])
 
 
@@ -395,7 +423,7 @@ class MemoryLeak(rfm.RegressionTest):
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
 
         # Get test-specific configuration
-        test_config = configure_test(curr_dir + '/mpi_config.yaml', 'MemoryLeak')
+        test_config = configure_test(config_path, 'MemoryLeak')
 
         # Compilation
         self.sourcepath = 'mpi-comms.cpp'
@@ -435,7 +463,7 @@ class MemoryLeak(rfm.RegressionTest):
         self.num_cpus_per_task = 1
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
-        env_vars, modules, cmds = set_env(curr_dir + '/mpi_config.yaml')
+        env_vars, modules, cmds = set_env(config_path)
         self.variables = env_vars
         if modules != []:
             self.modules = modules
@@ -454,7 +482,7 @@ class MemoryLeak(rfm.RegressionTest):
         ]
 
     # Test parameter(s)
-    params = get_test_params(curr_dir + '/mpi_config.yaml', 'MemoryLeak')
+    params = get_test_params(config_path, 'MemoryLeak')
     num_nodes = parameter(params['num-nodes'])
     ntasks_per_node = parameter([params['num-tasks-per-node']])
 

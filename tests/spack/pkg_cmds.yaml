@@ -1,0 +1,11 @@
+---
+
+# Commands to run for baseline sanity check
+# Check basic functioning of binary via -h/--help or -v/--version
+commands:
+  #library: ['ldd', 'lib/lib.so']
+  #software_package: ['command', 'option', 'valid output to check']
+  # EXAMPLES:
+  slate: ['ldd', 'lib64/libslate.so']
+  py-numpy: ['python3', '-c "import numpy as np: print(np.version)"', "module 'numpy.version'"]
+  gromacs/2023-mixed: ['gmx_mpi', '--version', 'GROMACS version']

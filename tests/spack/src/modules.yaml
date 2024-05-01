@@ -1,0 +1,29 @@
+modules:
+
+  default:
+    roots:
+      lmod: INSTALL_PREFIX/modules
+
+    lmod:
+
+      # select all packages that depend on python, or r, or java,
+      # and set these modules to autoload their dependencies
+      ^python:
+        autoload: direct
+      ^r:
+        autoload: direct
+      ^java:
+        autoload: direct
+
+      projections:
+        # By default all packages are hidden modules 
+        # unless explicitly added here 
+
+        #bio 
+        beast1: 'bio-applications/{name}/{version}'
+        beast2: 'bio-applications/{name}/{version}'
+        exabayes: 'bio-applications/{name}/{version}'
+        examl: 'bio-applications/{name}/{version}'
+
+        # by default all others are hidden
+        all: 'dependencies/.{name}/{version}-{hash:7}'
