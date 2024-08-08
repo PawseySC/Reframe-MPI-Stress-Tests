@@ -2,7 +2,7 @@
 #include <iostream>
 #include <sched.h>
 #include <unistd.h>
-#include <sys/sysctl.h>
+//#include <sys/sysctl.h>
 #include <cstring>
 #include <stdlib.h>
 #include <fstream>
