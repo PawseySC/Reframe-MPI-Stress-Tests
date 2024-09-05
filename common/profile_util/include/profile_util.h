@@ -6,6 +6,7 @@
 #define _PROFILE_UTIL
 
 #include <cstring>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <tuple>
@@ -17,109 +18,33 @@
 #include <iomanip>
 #include <memory>
 #include <array>
+#include <algorithm>
+#include <thread>
+#include <condition_variable>
+#include <filesystem>
 
 #include <sched.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/sysinfo.h>
 
+
 #ifdef _MPI
 #include <mpi.h>
 #endif 
 
-#ifdef _HIP
-#define _GPU 
-#define _GPU_API "HIP"
-#define _GPU_TO_SECONDS 1.0/1000.0
-#include <hip/hip_runtime.h>
-#endif
-
-#ifdef _CUDA
-#define _GPU
-#define _GPU_API "CUDA"
-#define _GPU_TO_SECONDS 1.0/1000.0
-#include <cuda_runtime.h>
-#include <device_launch_parameters.h>
-#endif
-
-#ifdef _OPENMP 
-#include <omp.h>
-#endif
-/// \defgroup GPU related define statements 
-//@{
-#ifdef _HIP
-#define pu_gpuMalloc hipMalloc
-#define pu_gpuHostMalloc hipHostMalloc
-#define pu_gpuFree hipFree
-#define pu_gpuMemcpy hipMemcpy
-#define pu_gpuMemcpyHostToDevice hipMemcpyHostToDevice
-#define pu_gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
-#define pu_gpuEvent_t hipEvent_t
-#define pu_gpuEventCreate hipEventCreate
-#define pu_gpuEventDestroy hipEventDestroy
-#define pu_gpuEventRecord hipEventRecord
-#define pu_gpuEventSynchronize hipEventSynchronize
-#define pu_gpuEventElapsedTime hipEventElapsedTime
-#define pu_gpuDeviceSynchronize hipDeviceSynchronize
-#define pu_gpuGetErrorString hipGetErrorString
-#define pu_gpuError_t hipError_t
-#define pu_gpuErr hipErr
-#define pu_gpuSuccess hipSuccess
-#define pu_gpuGetDeviceCount hipGetDeviceCount
-#define pu_gpuDeviceProp_t hipDeviceProp_t
-#define pu_gpuSetDevice hipSetDevice
-#define pu_gpuGetDeviceProperties hipGetDeviceProperties
-#define pu_gpuDeviceGetPCIBusId hipDeviceGetPCIBusId
-#define pu_gpuDeviceReset hipDeviceReset
-#define pu_gpuLaunchKernel(...) hipLaunchKernelGGL(__VA_ARGS__)
-
-#endif
-
-#ifdef _CUDA
-
-#define pu_gpuMalloc cudaMalloc
-#define pu_gpuHostMalloc cudaMallocHost
-#define pu_gpuFree cudaFree
-#define pu_gpuMemcpy cudaMemcpy
-#define pu_gpuMemcpyHostToDevice cudaMemcpyHostToDevice
-#define pu_gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
-#define pu_gpuEvent_t cudaEvent_t
-#define pu_gpuEventCreate cudaEventCreate
-#define pu_gpuEventDestroy cudaEventDestroy
-#define pu_gpuEventRecord cudaEventRecord
-#define pu_gpuEventSynchronize cudaEventSynchronize
-#define pu_gpuEventElapsedTime cudaEventElapsedTime
-#define pu_gpuDeviceSynchronize cudaDeviceSynchronize
-#define pu_gpuError_t cudaError_t
-#define pu_gpuErr cudaErr
-#define pu_gpuSuccess cudaSuccess
-#define pu_gpuGetDeviceCount cudaGetDeviceCount
-#define pu_gpuDeviceProp_t cudaDeviceProp_t
-#define pu_gpuSetDevice cudaSetDevice
-#define pu_gpuGetDeviceProperties cudaGetDeviceProperties
-#define pu_gpuDeviceGetPCIBusId cudaDeviceGetPCIBusId
-#define pu_gpuDeviceReset cudaDeviceReset
-#define pu_gpuLaunchKernel cudaLaunchKernel
-
-
-#endif
-
-#ifdef _GPU 
-// macro for checking errors in HIP API calls
-#define pu_gpuErrorCheck(call)                                                                 \
-do{                                                                                         \
-    pu_gpuError_t pu_gpuErr = call;                                                               \
-    if(pu_gpuSuccess != pu_gpuErr){                                                               \
-        std::cerr<<_GPU_API<<" error : "<<pu_gpuGetErrorString(pu_gpuErr)<<" - "<<__FILE__<<":"<<__LINE__<<std::endl; \
-        exit(0);                                                                            \
-    }                                                                                       \
-}while(0)
-
-#endif
-//@}
+#include "profile_util_gpu.h"
+#include "profile_util_api.h"
 
 namespace profiling_util {
 
+#ifdef _MPI
+    extern MPI_Comm __comm;
+    extern int __comm_rank;
+#endif
+
+    /// function that returns a string of the time at when it is called. 
+    std::string __when();
     /// function that converts the mask of thread affinity to human readable string 
     void cpuset_to_cstr(cpu_set_t *mask, char *str);
     /// reports the parallelAPI 
@@ -143,7 +68,8 @@ namespace profiling_util {
     std::string MPIReportThreadAffinity(std::string func, std::string line, MPI_Comm &comm);
 #endif
 
-    /// run a command
+
+     /// run a command
     /// @param cmd string of command to run on system
     /// @return string of MPI comm rank and thread core affinity 
     std::string exec_sys_cmd(std::string cmd);
@@ -183,8 +109,8 @@ namespace profiling_util {
             std::size_t _val;
         };
 
-        struct _microseconds_amount {
-            std::chrono::microseconds::rep _val;
+        struct _nanoseconds_amount {
+            std::chrono::nanoseconds::rep _val;
         };
 
         template <typename T>
@@ -228,21 +154,30 @@ namespace profiling_util {
 
         template <typename T>
         inline
-        std::basic_ostream<T> &operator<<(std::basic_ostream<T> &os, const detail::_microseconds_amount &t)
+        std::basic_ostream<T> &operator<<(std::basic_ostream<T> &os, const detail::_nanoseconds_amount &t)
         {
             auto time = t._val;
+	    float ftime = time;
             if (time < 1000) {
+                os << time << " [ns]";
+                return os;
+            }    
+	    
+	    ftime = time/1000.f;
+	    time /= 1000;
+	    if (time < 1000) {
                 os << time << " [us]";
                 return os;
             }
 
+            ftime = time / 1000.f;
             time /= 1000;
             if (time < 1000) {
                 os << time << " [ms]";
                 return os;
             }
 
-            float ftime = time / 1000.f;
+            ftime = time / 1000.f;
             const char *prefix = " [s]";
             if (ftime > 60) {
                 ftime /= 60;
@@ -282,7 +217,7 @@ namespace profiling_util {
     /// @param v The value to send to the stream
     ///
     inline
-    detail::_microseconds_amount us_time(std::chrono::microseconds::rep amount) {
+    detail::_nanoseconds_amount ns_time(std::chrono::nanoseconds::rep amount) {
         return {amount};
     }
 
@@ -366,7 +301,7 @@ namespace profiling_util {
     public:
 
         using clock = std::chrono::high_resolution_clock;
-        using duration = typename std::chrono::microseconds::rep;
+        using duration = typename std::chrono::nanoseconds::rep;
         
 
         /*!
@@ -384,7 +319,7 @@ namespace profiling_util {
          */
         inline
         duration get() const {
-            return std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - tref).count();
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - tref).count();
         }
 
         /*!
@@ -395,28 +330,43 @@ namespace profiling_util {
          */
         inline
         duration get_creation() const {
-            return std::chrono::duration_cast<std::chrono::microseconds>(clock::now() - t0).count();
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - t0).count();
         }
 
         /*!
          * Returns the elapsed time on device since the reference time
          * of the device event
          *
-         * @return The time elapsed since the creation of the timer, in [us]
+         * @return The time elapsed since the creation of the timer, in [ns]
          */
 #if defined(_GPU)
+        inline void get_ref_device() {
+            pu_gpuErrorCheck(pu_gpuGetDevice(&other_device_id));
+            swap_device = (other_device_id != device_id);
+            if (swap_device) {
+                pu_gpuErrorCheck(pu_gpuSetDevice(device_id));
+            }
+        }
+        inline void set_cur_device()  {
+            if (swap_device) {
+                pu_gpuErrorCheck(pu_gpuSetDevice(other_device_id));
+            }
+        }
         inline
-        float get_on_device() const 
+        float get_on_device()  
         {
             if (!use_device) return 0;
+            float telapsed = 0;
+            get_ref_device();
             pu_gpuEvent_t t1_event;
+            // create event 
             pu_gpuErrorCheck(pu_gpuEventCreate(&t1_event));
             pu_gpuErrorCheck(pu_gpuEventRecord(t1_event)); 
             pu_gpuErrorCheck(pu_gpuEventSynchronize(t1_event));
-            float telapsed;
             pu_gpuErrorCheck(pu_gpuEventElapsedTime(&telapsed,t0_event,t1_event));
-            telapsed *= _GPU_TO_SECONDS; // to convert to seconds 
+            telapsed *= _GPU_TO_SECONDS * 1e9; // to convert to nano seconds 
             pu_gpuErrorCheck(pu_gpuEventDestroy(t1_event));
+            set_cur_device();
             return telapsed;
         }
 #endif
@@ -427,8 +377,16 @@ namespace profiling_util {
             t0 = clock::now();
 #if defined(_GPU)
             if (use_device) {
+                // clean up current event 
+                pu_gpuErrorCheck(pu_gpuSetDevice(device_id));
+                pu_gpuErrorCheck(pu_gpuEventDestroy(t0_event));
+                // make new event on current device
+                pu_gpuErrorCheck(pu_gpuGetDevice(&device_id));
+                pu_gpuErrorCheck(pu_gpuEventCreate(&t0_event));
                 pu_gpuErrorCheck(pu_gpuEventRecord(t0_event)); 
                 pu_gpuErrorCheck(pu_gpuEventSynchronize(t0_event));
+                other_device_id = device_id;
+                swap_device = false;
             }
 #endif
         };
@@ -436,6 +394,15 @@ namespace profiling_util {
         {
             return ref;
         };
+#if defined(_GPU)
+        std::string get_device_swap_info()
+        {
+            if (swap_device) {
+                return "WARNING: Device swapped during timing: currently on "+ std::to_string(other_device_id) + " but measuring on " + std::to_string(device_id) + " : ";
+            }
+            else return "";
+        };
+#endif
 
         Timer(const std::string &f, const std::string &l, bool _use_device=true) {
             ref="@"+f+" L"+l;
@@ -443,111 +410,247 @@ namespace profiling_util {
             tref = t0;
             use_device = _use_device;
 #if defined(_GPU)
+            int ndevices;
+            pu_gpuErrorCheck(pu_gpuGetDeviceCount(&ndevices));
+            if (ndevices == 0) use_device = false;
             if (use_device) {
+                pu_gpuErrorCheck(pu_gpuGetDevice(&device_id));
                 pu_gpuErrorCheck(pu_gpuEventCreate(&t0_event));
                 pu_gpuErrorCheck(pu_gpuEventRecord(t0_event)); 
                 pu_gpuErrorCheck(pu_gpuEventSynchronize(t0_event));
+                other_device_id = device_id;
             }
 #endif
         }
 #if defined(_GPU)
         ~Timer()
         {
-            if (use_device) pu_gpuErrorCheck(pu_gpuEventDestroy(t0_event));
+            if (use_device) {
+                if (swap_device) {
+                    pu_gpuErrorCheck(pu_gpuSetDevice(device_id));
+                    pu_gpuErrorCheck(pu_gpuEventDestroy(t0_event));
+                    pu_gpuErrorCheck(pu_gpuSetDevice(other_device_id));
+                }
+                else {
+                    pu_gpuErrorCheck(pu_gpuEventDestroy(t0_event));
+                }
+            }
         }
 #endif
 
-    private:
+    protected:
         clock::time_point t0;
         clock::time_point tref;
         std::string ref;
         bool use_device = true;
 #if defined(_GPU)
         pu_gpuEvent_t t0_event;
+        // store the device on which event is recorded
+        // and whether timer called on another device
+        int device_id, other_device_id;
+        bool swap_device = false;
 #endif
     };
 
-    /// get the time taken between some reference time (which defaults to creation of timer )
+    /// @brief report the time taken between some reference time (which defaults to creation of timer )
     /// and current call
-    std::string ReportTimeTaken(const Timer &t, const std::string &f, const std::string &l);
-    float GetTimeTaken(const Timer &t, const std::string &f, const std::string &l);
+    /// @param t instance of timer class 
+    /// @param f string of function where the ReporTimeTaken is called (at least that is the idea)
+    /// @param l string of line number in file where the ReporTimeTaken is called (at least that is the idea)
+    /// @return string reporting time taken 
+    std::string ReportTimeTaken(Timer &t, const std::string &f, const std::string &l);
+
+    /// @brief get the time taken between some reference time (which defaults to creation of timer )
+    /// and current call
+    /// @param t instance of timer class 
+    /// @param f string of function where the ReporTimeTaken is called (at least that is the idea)
+    /// @param l string of line number in file where the ReporTimeTaken is called (at least that is the idea)
+    /// @return time taken 
+    float GetTimeTaken(Timer &t, const std::string &f, const std::string &l);
 
 #if defined(_GPU)
-    std::string ReportTimeTakenOnDevice(const Timer &t, const std::string &f, const std::string &l);
-    float GetTimeTakenOnDevice(const Timer &t, const std::string &f, const std::string &l);
+    /// @brief report the time taken between some reference time (which defaults to creation of timer )
+    /// and current call on the device 
+    /// @param t instance of timer class 
+    /// @param f string of function where the ReporTimeTaken is called (at least that is the idea)
+    /// @param l string of line number in file where the ReporTimeTaken is called (at least that is the idea)
+    /// @return string reporting time taken 
+    std::string ReportTimeTakenOnDevice(Timer &t, const std::string &f, const std::string &l);
+    /// @brief get the time taken between some reference time (which defaults to creation of timer )
+    /// and current call on device 
+    /// @param t instance of timer class 
+    /// @param f string of function where the ReporTimeTaken is called (at least that is the idea)
+    /// @param l string of line number in file where the ReporTimeTaken is called (at least that is the idea)
+    /// @return time taken 
+    float GetTimeTakenOnDevice(Timer &t, const std::string &f, const std::string &l);
+#endif
+
+    /// @brief get the ave, std, min, max of input vector
+    /// @param input input vector
+    template <typename T> std::tuple<T,T,T,T>get_stats(std::vector<T> &input, unsigned int offset = 0, unsigned int stride = 1)
+    {
+        T ave = 0, std = 0, min = 0, max = 0;
+        if (input.size()>0) {
+            min = max = input[offset];
+            for (auto i=offset;i<input.size();i+=stride)
+            {
+                ave += input[i];
+                std += input[i]*input[i];
+                min = std::min(input[i], min);
+                max = std::max(input[i], max);
+            }
+            auto n = static_cast<T>(input.size());
+            ave /= n;
+            if (n == 1) std = 0;
+            else std = sqrt(std-ave*ave*n)/(n-1.0);
+        }
+        return std::tie(ave, std, min, max);
+    }
+
+    /// @brief StateSample class that gets the stats of utilisation/energy
+    /// from point of creation to requested reporting.
+    /// inherents public routines from Timer
+    class StateSampler: public profiling_util::Timer {
+
+    private:
+        // unique sample identifier
+        int id; 
+        /// process id
+        int pid = 0;
+        // time in seconds between samples
+        float sample_time = 1.0;
+        std::string cpu_energy_fname, cpu_usage_fname, cpu_freq_fname;
+        std::vector<std::thread>* threads = nullptr;
+        std::mutex mtx;
+        std::condition_variable cv;
+        bool stopFlag = false;
+        bool use_device = true;
+        int nDevices = 0;
+#ifdef _GPU
+        std::string gpu_energy_fname, gpu_usage_fname, gpu_mem_fname, gpu_memusage_fname;
+#endif
+        
+        std::string _set_sampling(const std::string &cmd, const std::string &out)
+        {
+            // return std::string("while true; do " + cmd + " >> " + out +
+            // "; sleep " + std::to_string(sample_time/1000.0) + "; done;");
+            return std::string(cmd + " >> " + out);
+        }
+        /// @brief launches the sampling processes
+        void _launch();
+
+        /// @brief Place a command using std::system and threads 
+        /// @param cmd command to place 
+        void _place_cmd(const std::string cmd)
+        {
+            auto status = std::system(cmd.c_str());
+        }
+
+        /// @brief Place a command using std::system and threads 
+        /// @param cmd command to place 
+        /// @param sleep_time time to sleep between running command
+        void _place_long_lived_cmd(const std::string cmd, float sleep_time)
+        {
+            while (!stopFlag) 
+            {
+                auto status = std::system(cmd.c_str());
+                usleep(sleep_time);
+            }
+        }
+    public:
+        StateSampler(const std::string &f, const std::string &l, float samples_per_sec = 1.0, bool _use_device=true);
+        ~StateSampler();
+        /// @brief pauses the sampling by joining threads
+        void Pause();
+        /// @brief restart the sampling by launching threads
+        void Restart();
+        /// @brief get sample time 
+        /// @return sample time
+        double GetSampleTime(){return sample_time;}
+        /// @brief get file name store cpu usage info
+        /// @return filename
+        std::string GetCPUUsageFname(){return cpu_usage_fname;}
+        /// @brief get file name store cpu energy info
+        /// @return filename
+        std::string GetCPUEnergyFname(){return cpu_energy_fname;}
+#ifdef _GPU
+        /// @brief get file name store gpu usage info
+        /// @return filename
+        std::string GetGPUUsageFname(){return gpu_usage_fname;}
+        /// @brief get file name store gpu energy info
+        /// @return filename
+        std::string GetGPUEnergyFname(){return gpu_energy_fname;}
+        /// @brief get file name store gpu mem usage info
+        /// @return filename
+        std::string GetGPUMemUsageFname(){return gpu_memusage_fname;}
+        /// @brief get file name store gpu mem used info
+        /// @return filename
+        std::string GetGPUMemFname(){return gpu_mem_fname;}
+#endif
+        /// @brief read the data from a file and returnt the vector of sampling data
+        /// @param fname the string of the file name to open
+        /// @return vector of data
+        std::vector<double> GetSamplingData(const std::string &fname);
+
+        /// @brief return number of devices visible to sampler
+        /// @return int of number of devices
+        int GetNumDevices(){return nDevices;};
+    };
+
+    /// @brief reports the statistics of CPU from start to current line
+    /// @param s sampler to use for reporting 
+    /// @param f function where called in code, useful to provide __func__ 
+    /// @param l code line number where called
+    /// @return string of CPU usage statistics
+    std::string ReportCPUUsage(StateSampler &s, const std::string &f, const std::string &l);
+
+#ifdef _GPU
+    /// @brief reports the statistics of GPU usage from start to current line
+    /// @param s sampler to use for reporting 
+    /// @param f function where called in code, useful to provide __func__ 
+    /// @param l code line number where called
+    /// @return string of GPU usage statistics
+    std::string ReportGPUUsage(StateSampler &s, const std::string &f, const std::string &l, int gpu_id = -1);
+
+    /// @brief reports the statistics of GPU energy from start to current line
+    /// @param s sampler to use for reporting 
+    /// @param f function where called in code, useful to provide __func__ 
+    /// @param l code line number where called
+    /// @return string of GPU energy statistics
+    std::string ReportGPUEnergy(StateSampler &s, const std::string &f, const std::string &l, int gpu_id = -1);
+
+    /// @brief reports the statistics of GPU memory used in MiB from start to current line
+    /// @param s sampler to use for reporting 
+    /// @param f function where called in code, useful to provide __func__ 
+    /// @param l code line number where called
+    /// @return string of GPU memory used in MiB statistics
+    std::string ReportGPUMem(StateSampler &s, const std::string &f, const std::string &l, int gpu_id = -1);
+
+    /// @brief reports the statistics of GPU memory used in % from start to current line
+    /// @param s sampler to use for reporting 
+    /// @param f function where called in code, useful to provide __func__ 
+    /// @param l code line number where called
+    /// @return string of GPU memory usage statistics
+    std::string ReportGPUMemUsage(StateSampler &s, const std::string &f, const std::string &l, int gpu_id = -1);
+
+    /// reports the GPU statistics 
+    /// @param func function where called in code, useful to provide __func__ and __LINE
+    /// @param line code line number where called
+    /// @param gpu_id gpu device of interest. Default is -1 and gets all gpus
+    /// @return string of GPU energy, usage, etc
+    std::string ReportGPUStatistics(StateSampler &s, const std::string &f, const std::string &l, int gpu_id = -1);
+
+#ifdef _MPI
+    /// MPI wrapper for reporting GPU status
+    /// @param func function where called in code, useful to provide __func__ and __LINE
+    /// @param line code line number where called
+    /// @param comm MPI communicator
+    /// @param gpu_id gpu device of interest. Default is -1 and gets all gpus
+    /// @return string of GPU energy, usage, etc
+    std::string MPIReportGPUStatus(std::string func, std::string line, MPI_Comm &comm, int gpu_id = -1);
+#endif
 #endif
 }
-
-/// \def utility definitions 
-//@{
-#define _where_calling_from "@"<<__func__<<" L"<<std::to_string(__LINE__)
-/// MPI helper routines
-//{@
-#ifdef _MPI 
-//#define MPIOnly0 if (ThisTask == 0)
-#define _MPI_calling_rank(task) "["<<std::setw(5) << std::setfill('0')<<task<<"] "<<std::setw(0)
-
-#endif
-    //@}
-//@}
-/// \defgroup LogAffinity
-/// Log thread affinity and parallelism either to std or an ostream
-//@{
-#define LogParallelAPI() std::cout<<_where_calling_from<<"\n"<<profiling_util::ReportParallelAPI()<<std::endl;
-#define LogBinding() std::cout<<_where_calling_from<<"\n"<<profiling_util::ReportBinding()<<std::endl;
-#define LogThreadAffinity() printf("%s \n", profiling_util::ReportThreadAffinity(__func__, std::to_string(__LINE__)).c_str());
-#define LoggerThreadAffinity(logger) logger<<profiling_util::ReportThreadAffinity(__func__, std::to_string(__LINE__))<<std::endl;
-#ifdef _MPI
-#define MPILog0ThreadAffinity() if(ThisTask == 0) printf("%s \n", profiling_util::ReportThreadAffinity(__func__, std::to_string(__LINE__)).c_str());
-#define MPILogger0ThreadAffinity(logger) if(ThisTask == 0)logger<<profiling_util::ReportThreadAffinity(__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILogThreadAffinity(comm) printf("%s \n", profiling_util::MPIReportThreadAffinity(__func__, std::to_string(__LINE__), comm).c_str());
-#define MPILoggerThreadAffinity(logger, comm) logger<<profiling_util::MPIReportThreadAffinity(__func__, std::to_string(__LINE__), comm)<<std::endl;
-#define MPILog0ParallelAPI() if(ThisTask==0) std::cout<<_where_calling_from<<"\n"<<profiling_util::ReportParallelAPI()<<std::endl;
-#define MPILog0Binding() {auto s =profiling_util::ReportBinding(); if (ThisTask == 0) std::cout<<_where_calling_from<<"\n"<<s<<std::endl;}
-#endif
-//@}
-
-/// \defgroup LogMem
-/// Log memory usage either to std or an ostream
-//@{
-#define LogMemUsage() std::cout<<profiling_util::ReportMemUsage(__func__, std::to_string(__LINE__))<<std::endl;
-#define LoggerMemUsage(logger) logger<<profiling_util::ReportMemUsage(__func__, std::to_string(__LINE__))<<std::endl;
-
-#ifdef _MPI
-#define MPILogMemUsage() std::cout<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportMemUsage(__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILoggerMemUsage(logger) logger<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportMemUsage(__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILog0NodeMemUsage(comm) {auto report=profiling_util::MPIReportNodeMemUsage(comm, __func__, std::to_string(__LINE__));if (ThisTask == 0) {std::cout<<_MPI_calling_rank(ThisTask)<<report<<std::endl;}}
-#define MPILogger0NodeMemUsage(logger, comm) {auto report=profiling_util::MPIReportNodeMemUsage(comm, __func__, std::to_string(__LINE__));if (ThisTask == 0) logger<<_MPI_calling_rank(ThisTask)<<report<<std::endl;}
-#endif
-
-#define LogSystemMem() std::cout<<profiling_util::ReportSystemMem(__func__, std::to_string(__LINE__))<<std::endl;
-#define LoggerSystemMem(logger) logger<<profiling_util::ReportSystemMem(__func__, std::to_string(__LINE__))<<std::endl;
-
-#ifdef _MPI
-#define MPILogSystemMem() std::cout<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportSystemMem(__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILoggerSystemMem(logger) logger<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportSystemMem(__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILog0NodeSystemMem(comm) {auto report=profiling_util::MPIReportNodeSystemMem(comm, __func__, std::to_string(__LINE__));if (ThisTask == 0){std::cout<<_MPI_calling_rank(ThisTask)<<report<<std::endl;}}
-#define MPILogger0NodeSystemMem(logger, comm) {auto report = profiling_util::MPIReportNodeSystemMem(__func__, std::to_string(__LINE__));if (ThisTask == 0) {logger<<_MPI_calling_rank(ThisTask)<<report<<std::endl;}}
-#endif
-//@}
-
-
-/// \defgroup LogTime
-/// Log time taken either to std or an ostream
-//@{
-#define LogTimeTaken(timer) std::cout<<profiling_util::ReportTimeTaken(timer, __func__, std::to_string(__LINE__))<<std::endl;
-#define LoggerTimeTaken(logger,timer) logger<<profiling_util::ReportTimeTaken(timer,__func__, std::to_string(__LINE__))<<std::endl;
-#define LogTimeTakenOnDevice(timer) std::cout<<profiling_util::ReportTimeTakenOnDevice(timer, __func__, std::to_string(__LINE__))<<std::endl;
-#define LoggerTimeTakenOnDevice(logger,timer) logger<<profiling_util::ReportTimeTakenOnDevice(timer,__func__, std::to_string(__LINE__))<<std::endl;
-#ifdef _MPI
-#define MPILogTimeTaken(timer) std::cout<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportTimeTaken(timer, __func__, std::to_string(__LINE__))<<std::endl;
-#define MPILoggerTimeTaken(logger,timer) logger<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportTimeTaken(timer,__func__, std::to_string(__LINE__))<<std::endl;
-#define MPILogTimeTakenOnDevice(timer) std::cout<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportTimeTakenOnDevice(timer, __func__, std::to_string(__LINE__))<<std::endl;
-#define MPILoggerTimeTakenOnDevice(logger,timer) logger<<_MPI_calling_rank(ThisTask)<<profiling_util::ReportTimeTakenOnDevice(timer,__func__, std::to_string(__LINE__))<<std::endl;
-#endif 
-#define NewTimer() profiling_util::Timer(__func__, std::to_string(__LINE__));
-#define NewTimerHostOnly() profiling_util::Timer(__func__, std::to_string(__LINE__), false);
-//@}
 
 /// \defgroup C_naming
 /// Extern C interface

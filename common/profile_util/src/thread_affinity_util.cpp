@@ -5,6 +5,11 @@
 #include "profile_util.h"
 
 namespace profiling_util {
+    
+    #ifdef _MPI
+    MPI_Comm __comm;
+    int __comm_rank;
+    #endif 
 
     /*
     Code to facilitate core binding reporting

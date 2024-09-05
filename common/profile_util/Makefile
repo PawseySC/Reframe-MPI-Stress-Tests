@@ -11,7 +11,7 @@ BUILDTYPE ?= serial
 DEVICETYPE= cpu  
 BUILDNAME ?=
 
-OBJS = obj/mem_util.o obj/time_util.o obj/thread_affinity_util.o 
+OBJS = obj/mem_util.o obj/time_util.o obj/thread_affinity_util.o obj/profile_util.o
 LIB = lib/$(OUTPUTFILEBASE)$(BUILDNAME)
 
 $(LIB).so: $(OBJS)
