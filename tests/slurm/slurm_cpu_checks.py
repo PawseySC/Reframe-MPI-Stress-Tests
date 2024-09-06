@@ -41,7 +41,7 @@ class MemoryCompileTest(rfm.CompileOnlyRegressionTest):
 
         # Compilation and execution
         self.build_system = 'SingleSource'
-        # Build profile_util library needed for cdode
+        # Build profile_util library needed for code
         self.prebuild_cmds = [
             'MAIN_SRC_DIR=$(pwd)',
             'cd common/profile_util', 
@@ -51,13 +51,18 @@ class MemoryCompileTest(rfm.CompileOnlyRegressionTest):
         ]
         self.build_system.cppflags = [
             '-fopenmp', '-O3', '-D_MPI',
-            '-L${PROFILE_UTIL_DIR}/lib',
-            '-I${PROFILE_UTIL_DIR}/include',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include',
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
         ]
         self.sourcepath = './mem_report.cpp'
         self.executable = 'mem_report.out'
+
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        _, modules, _ = set_env(config_path)
+        if modules != []:
+            self.modules = modules
 
         self.tags = {'slurm'}
         
@@ -88,6 +93,7 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
         self.num_tasks = self.num_nodes * self.num_tasks_per_node
         self.num_cpus_per_task = job_info['num-cpus-per-task']
         self.num_tasks_per_core = job_info['num-tasks-per-core']
+        self.time_limit = job_info['time-limit']
         if self.multithreading:
             self.nthreads_per_core = 2
             self.mem_per_cpu = self.max_mem_per_cpu // self.nthreads_per_core
@@ -98,14 +104,14 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
         
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
             self.prerun_cmds = cmds
 
         # Check value of SLURM environment variable
-        self.postrun_cmds = ['echo Each node has been allocated $SLURM_MEM_PER_NODE MB of memory']
+        self.prerun_cmds += ['echo Each node has been allocated $SLURM_MEM_PER_NODE MB of memory']
 
         self.tags = {'slurm'}
 
@@ -138,7 +144,7 @@ class slurm_node_mem_check(rfm.RunOnlyRegressionTest):
     @run_before('run')
     def run_one_task(self):
         cmd = self.job.launcher.run_command(self.job)
-        self.prerun_cmds = [
+        self.prerun_cmds += [
             f'{cmd} -N {self.num_nodes} -n {self.num_nodes} -c {self.num_cpus_per_task} {self.executable} {self.executable_opts[0]}',
         ]
     # Explicitly set -c in srun statements (needed for SLURM > 21.08)
@@ -189,7 +195,7 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -234,7 +240,7 @@ class slurm_cpu_mem_check(rfm.RunOnlyRegressionTest):
     @run_before('run')
     def set_cpus_per_task(self):
         if self.job.scheduler.registered_name in ['slurm', 'squeue']:
-            self.job.launcher.options = [f'-c {self.num_cpus_per_task}']
+            self.job.launcher.options = ['-n 1']
     
     # Test passes if there is one success and one failure, and if the slurm variable is correct
     # One success should be from --ntasks=1 run
@@ -281,7 +287,7 @@ class slurm_billing_check(rfm.RunOnlyRegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -339,12 +345,18 @@ class slurm_billing_check(rfm.RunOnlyRegressionTest):
         # then we asked for, since we don't have access to the SMT on each CPU
         if not self.multithreading:
             req_cpus *= 2
+        print(req_cpus, req_mem, mem_cpus)
         max_billing = max([req_cpus, mem_cpus])
 
         billing = sn.extractsingle(r'billing=(?P<billing>\S+)', self.stdout, 'billing', int)
         num_cpus = sn.extractsingle(r'NumCPUs=(?P<num_cpus>\S+)', self.stdout, 'num_cpus', int)
         memory = sn.extractsingle(r'mem=(?P<memory>\S+)M.+', self.stdout, 'memory', int)
         tres_cpu = sn.extractsingle(r'TRES=cpu=(?P<tres_cpu>\S+),mem.+', self.stdout, 'tres_cpu', int)
+
+        print(max_billing, billing)
+        print(billing, num_cpus)
+        print(tres_cpu, billing)
+        print(req_mem, memory)
 
         return sn.all([
             sn.assert_eq(max_billing, billing),
@@ -382,7 +394,7 @@ class slurm_cpu_check(rfm.RunOnlyRegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -477,12 +489,13 @@ class omp_thread_check(rfm.RegressionTest):
             'cd ${MAIN_SRC_DIR}',
         ]
         self.build_system.cppflags = [
-            '-fopenmp', '-O3', '-D_MPI', 
-            '-L${PROFILE_UTIL_DIR}/lib', 
-            '-I${PROFILE_UTIL_DIR}/include', 
+            '-fopenmp', '-O3', '-D_MPI',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include', 
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/', 
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
             ]
+        
         # Executable is thread affinity reporting program
         self.executable = 'affinity_report.out'
         
@@ -493,9 +506,9 @@ class omp_thread_check(rfm.RegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
-        self.variables['OMP_DISPLAY_ENV'] = 'VERBOSE'
-        self.variables['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
+        self.env_vars = env_vars
+        self.env_vars['OMP_DISPLAY_ENV'] = 'VERBOSE'
+        self.env_vars['OMP_NUM_THREADS'] = str(self.num_cpus_per_task)
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -566,13 +579,18 @@ class AffinityCompileTest(rfm.CompileOnlyRegressionTest):
             'cd ${MAIN_SRC_DIR}',
         ]
         self.build_system.cppflags = [
-            '-fopenmp', '-D_MPI', '-O3',
-            '-L${PROFILE_UTIL_DIR}/lib',
-            '-I${PROFILE_UTIL_DIR}/include',
+            '-fopenmp', '-O3', '-D_MPI',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include',
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
         ]
         self.executable = 'affinity_report.out'
+
+        # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
+        _, modules, _ = set_env(config_path)
+        if modules != []:
+            self.modules = modules
 
         self.tags = {'slurm'}
         
@@ -609,7 +627,7 @@ class affinity_check(rfm.RunOnlyRegressionTest):
         self.num_cpus_per_task = job_info['num-cpus-per-task']
         self.num_nodes = job_info['num-nodes']
         if self.access == 'exclusive':
-            self.num_tasks_per_node = 16
+            self.num_tasks_per_node = 9
             self.exclusive_access = True
         elif self.access == 'shared':
             self.num_tasks_per_node = 2
@@ -623,14 +641,14 @@ class affinity_check(rfm.RunOnlyRegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         self.omp_num_threads = self.num_cpus_per_task
-        self.variables['OMP_NUM_THREADS'] = str(self.omp_num_threads)
-        self.variables['OMP_DISPLAY_AFFINITY'] = 'TRUE'
-        self.variables['OMP_DISPLAY_ENV'] = 'VERBOSE'
+        self.env_vars['OMP_NUM_THREADS'] = str(self.omp_num_threads)
+        self.env_vars['OMP_DISPLAY_AFFINITY'] = 'TRUE'
+        self.env_vars['OMP_DISPLAY_ENV'] = 'VERBOSE'
         # Specify distribution of OMP threads
-        self.variables['OMP_PROC_BIND'] = self.omp_proc_bind
-        self.variables['OMP_PLACES'] = self.omp_places
+        self.env_vars['OMP_PROC_BIND'] = self.omp_proc_bind
+        self.env_vars['OMP_PLACES'] = self.omp_places
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -733,14 +751,15 @@ class het_job_test(rfm.RegressionTest):
             'MAIN_SRC_DIR=$(pwd)',
             'cd common/profile_util', './build_cpu.sh', 'PROFILE_UTIL_DIR=$(pwd)', 
             'cd ${MAIN_SRC_DIR}',
-            'make'
+            'make clean'
         ]
         self.executable = 'mpicomm'
         self.executable_opts = ['1> hetjob.log 2> hetjob.err']
+        self.keep_files = ['*.err', '*.log']
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -796,7 +815,7 @@ class het_job_test(rfm.RegressionTest):
             self.job.options += [
                 '--nodes=2',
                 '--mem=0',
-                '--ntasks=256',
+                '--ntasks=144',
             ]
         elif self.mode == 'sbatch':
             self.job.options += [
@@ -851,7 +870,7 @@ class accounting_check(rfm.RunOnlyRegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load), etc.
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:

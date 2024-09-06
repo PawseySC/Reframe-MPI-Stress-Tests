@@ -110,7 +110,7 @@ def extract_affinity(job_config):
 
     # Regex pattern to match affinity output
     # Extract the MPI rank, the OMP thread ID, and the core the thread is placed on
-    patt = r'Node\s+(nid[0-9]+).+MPI\s+([0-9]+).+Thread\s+([0-9]+).+\s+placement\s+=\s+([0-9]+)'
+    patt = r'Node\s+(ella-n[0-9]+).+MPI\s+([0-9]+).+Thread\s+([0-9]+).+\s+placement\s+=\s+([0-9]+)'
     #patt = r'MPI RANK\s+([0-9]+).+OMP\s+([0-9]+).+HWT\s+([0-9]+)'
     #patt = r'MPI RANK\s+([0-9]+).+HOST\s+(\w+[0-9]+).+OMP\s+([0-9]+).+HWT\s+([0-9]+)'
 

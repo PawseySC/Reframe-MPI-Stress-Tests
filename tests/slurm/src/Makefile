@@ -1,16 +1,18 @@
 .PHONY: all clean
 
-CXX=CC
-MPICXX=CC
+CXX=g++
+MPICXX=mpic++
 LIBDIR=$(shell pwd)/common/profile_util/lib/
 LIB=-lprofile_util_mpi_omp
 INCDIR=$(shell pwd)/common/profile_util/include/
-FLAGS=-L$(LIBDIR) -I$(INCDIR) -Wl,-rpath=$(LIBDIR) -D_MPI -std=c++17
+MPIINC=/usr/include/mpich-aarch64
+MPILIB=/usr/lib64/mpich/lib
+FLAGS=-L$(MPILIB) -L$(LIBDIR) -I$(MPIINC) -I$(INCDIR) -Wl,-rpath=$(LIBDIR) -D_MPI -std=c++17
 CXXFLAGS?=-fopenmp
 
 all: mpicomm affinity_report.nompi
 
-clean: 
+clean:
 	rm -f mpicomm affinity_report.nompi
 
 mpicomm: mpicomm.cpp

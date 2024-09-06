@@ -2,19 +2,19 @@
 # Config common to all tests
 environment:
     mpi:
-      modules: ~
+      modules: [mpi/mpich-aarch64]
       commands: ~
       env-vars: {MPICH_ENV_DISPLAY: '1', MPICH_MEMORY_REPORT: '1', MPICH_OFI_VERBOSE: '1'}
     slurm:
       modules: ~
-      commands: [scontrol show job $SLURM_JOB_ID, seff $SLURM_JOB_ID, env | grep -i SLURM, env | grep -i SRUN]
+      commands: [scontrol show job $SLURM_JOB_ID, env | grep -i SLURM, env | grep -i SRUN]
       env-vars: ~
   
 # MemoryCompile test
 MemoryCompile:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
   job-options:
@@ -24,27 +24,28 @@ MemoryCompile:
 slurm_node_mem_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
-    max-mem-per-cpu: 1840
+    max-mem-per-cpu: 650
   job-options:
     account: pawsey0001
     num-nodes: 2
     num-tasks-per-node: 4
     num-cpus-per-task: 1
     num-tasks-per-core: 1
+    time-limit: 120
   test-parameters:
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not currently supported on ella
 
 # mem-per-cpu test
 slurm_cpu_mem_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
-    max-mem-per-cpu: 1840
+    max-mem-per-cpu: 650
   job-options:
     account: pawsey0001
     num-nodes: 1
@@ -52,30 +53,30 @@ slurm_cpu_mem_check:
     num-cpus-per-task: 1
     num-tasks-per-core: 1
   test-parameters:
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not currently supported on ella
 
 # billing test
 slurm_billing_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
-    max-mem-per-cpu: 1840
+    max-mem-per-cpu: 650
   job-options:
     account: pawsey0001
     num-nodes: 1
     num-tasks-per-node: 4
     #num-cpus-per-task: 3
   test-parameters:
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not currently supported on ella
     num-cpus-per-task: [1, 2, 3]
 
 # cpu test
 slurm_cpu_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
   job-options:
@@ -84,27 +85,27 @@ slurm_cpu_check:
     num-cpus-per-task: 13
     num-tasks-per-node: 5
   test-parameters:
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not supported currently on ella
 
 # omp thread test
 omp_thread_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
   job-options:
     account: pawsey0001
     num-cpus-per-task: 4
   test-parameters:
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not supported currently on ella
     cpu-binding: [auto, none, threads, cores]
 
 # AffinityCompile test
 AffinityCompile:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
   job-options:
@@ -114,10 +115,10 @@ AffinityCompile:
 affinity_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
-    max-mem-per-cpu: 1840
+    max-mem-per-cpu: 650
   job-options:
     account: pawsey0001
     num-nodes: 1
@@ -126,16 +127,16 @@ affinity_check:
     access: [exclusive, shared]
     omp-proc-bind: [master, close, spread]
     omp-places: [threads, cores, sockets]
-    multithreading: [True, False]
+    multithreading: [False] # multithreading not supported currently on ella
 
 # hetereogeneous job test
 het_job_test:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
-    max-mem-per-cpu: 1840
+    max-mem-per-cpu: 650
   job-options:
     account: pawsey0001
     time-limit: 600
@@ -146,7 +147,7 @@ het_job_test:
 accounting_check:
   system-parameters:
     system:
-      - setonix:work
+      - ella:gpu
     prog-environ:
       - PrgEnv-gnu
   job-options:
