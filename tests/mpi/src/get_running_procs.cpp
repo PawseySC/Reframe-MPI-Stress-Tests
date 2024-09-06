@@ -112,6 +112,7 @@ std::string report_memory_usage(const std::string &function, const std::string &
 // Store running PIDs in a vector
 // Code adapted from https://stackoverflow.com/questions/63372288/getting-list-of-pids-from-proc-in-linux
 std::tuple<std::vector<std::string>, std::vector<std::string>> getPIDs(int nprocs) {
+    std::cout << "Inside GetPIDs function" << std::endl;
     std::string pid, pid_host;
     std::vector<std::string> pid_vec(nprocs), host_vec(nprocs);
     const char *procs_file = "procs_list.txt";
@@ -125,6 +126,8 @@ std::tuple<std::vector<std::string>, std::vector<std::string>> getPIDs(int nproc
     for (std::string line; std::getline(f, line);) {
         auto start = line.find("is: ");
         auto end = line.find("node ");
+	std::cout << "start = " << start << " and end = " << end << std::endl;
+	std::cout << line << std::endl;
         if (start != std::string::npos) {
             std::istringstream is(line.substr(start + 4));
             is >> pid;
@@ -138,6 +141,7 @@ std::tuple<std::vector<std::string>, std::vector<std::string>> getPIDs(int nproc
             count += 1;
         }
     }
+    std::cout << "Loop done" << std::endl;
 
     // Close proc file
     f.close();
@@ -170,20 +174,22 @@ int main(int argc, char *argv[]) {
 
     // To ensure MPI program is running before we try and get running PIDs
     // NOTE: May need to adjust this
-    sleep(3);
+    sleep(1);
 
     // Memory reporting cadence and number of processes in separate MPI code
-    float cadence = atof(argv[1]);
-    int nprocs = atoi(argv[2]);
+    //float cadence = atof(argv[1]);
+    int nprocs = atoi(argv[1]);
+    std::cout << "There are " << nprocs << "processes" << std::endl;
 
     // Get PIDs which are running in the MPI program
     std::vector<std::string> pids;
     std::vector<std::string> hosts;
+    std::cout << "Initialised pids and hosts vectors " << std::endl;
     tie(pids, hosts) = getPIDs(nprocs);
     // auto [pids, hosts] = getPIDs(nprocs);
     auto size = pids.size();
-    // std::cout << hostname << ": Size = " << size << std::endl;
-    // std::cout << hostname << ": First PID is " << pids[0] << std::endl;
+    std::cout << hostname << ": Size = " << size << std::endl;
+    std::cout << hostname << ": First PID is " << pids[0] << std::endl;
 
     // Report memory until the file `done.txt` exists
     // TODO: Find a better way to do this
@@ -204,7 +210,7 @@ int main(int argc, char *argv[]) {
         std::cout << "PERIODIC : " << hostname << " : " << system_mem_report << "." << std::endl;
 
         // Cadence for memory reporting
-        sleep(cadence);
+        //sleep(cadence);
 
         // File only exists if MPI program has finished running
         // TODO: Find a better way for this program to detect finish of other program

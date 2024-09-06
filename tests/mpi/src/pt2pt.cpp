@@ -19,9 +19,13 @@
 #define ASYNCHWAITS 2     // asynchronous send and receives, with wait after each receive
 #define ASYNCHRONOUS 3    // fully asynchronous send and receives, with waitall after all receives
 
-// Prepend log statements with the rank being called as well as function and line number of calling statement
-#define LOG(ThisTask)                                                                                                  \
-    std::cout << _MPI_calling_rank(ThisTask) << "@" << __func__ << " L" << __LINE__ << " (" << getcurtime() << ") : "
+#define Rank0LocalLogger() if (ThisTask==0) Log()
+#define LogMPITest() Rank0LocalLogger()<<" running "<<mpifunc<< " test"<<std::endl;
+#define LogMPIBroadcaster() if (ThisTask == itask) Log()<<" running "<<mpifunc<<" broadcasting "<<sendsize<<" GB"<<std::endl;
+#define LogMPISender() Log()<<" Running "<<mpifunc<<" sending "<<sendsize<<" GB"<<std::endl;
+#define LogMPIReceiver() if (ThisTask == itask) Log()<<" running "<<mpifunc<<std::endl;
+#define LogMPIAllComm() Rank0LocalLogger()<<" running "<<mpifunc<<" all "<<sendsize<<" GB"<<std::endl;
+#define Rank0ReportMem() if (ThisTask==0) {LogMemUsage();LogSystemMem();}
 
 // To ease redistribution of data, have each
 // datum also have a rank indicator to denote
@@ -41,7 +45,7 @@ std::string getcurtime() {
 }
 
 // This rank number and size of MPI_COMM_WORLD
-int world_rank, world_size;
+int ThisTask, NProcs;
 int root_rank = 0;
 
 template <typename Clock>
@@ -51,7 +55,7 @@ void reportTime(std::chrono::time_point<Clock> start, std::chrono::time_point<Cl
     duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
     // Declare a vector to hold the times from each rank
-    std::vector<float> times(world_size);
+    std::vector<float> times(NProcs);
     void *p = times.data();
     // Gather all the times into `times` vector on rank 0
     MPI_Gather(&duration, 1, MPI_INT, p, 1, MPI_INT, 0, MPI_COMM_WORLD);
@@ -59,13 +63,13 @@ void reportTime(std::chrono::time_point<Clock> start, std::chrono::time_point<Cl
     MPI_Reduce(&duration, &duration_sum, 1, MPI_FLOAT, MPI_SUM, 0, MPI_COMM_WORLD);
 
     // Only do the computation and reporting on rakn 0
-    if (world_rank == 0) {
-        auto avg = duration_sum / world_size;
+    if (ThisTask == 0) {
+        auto avg = duration_sum / NProcs;
         float std = 0.0, iqr = 0.0;
         std::sort(times.begin(), times.end());
         auto min = times[0], max = times[0]; // min and max times
         // Calculate the inter-quartile range
-        float q1 = (world_size + 1) / 4, q3 = (3 * (world_size + 1)) / 4;
+        float q1 = (NProcs + 1) / 4, q3 = (3 * (NProcs + 1)) / 4;
         float q3_term, q1_term;
         if (std::fmod(q3, 4.0) != 0) {
             q3_term = (times[static_cast<int>(std::floor(q3))] + times[static_cast<int>(std::ceil(q3))]) / 2;
@@ -83,7 +87,7 @@ void reportTime(std::chrono::time_point<Clock> start, std::chrono::time_point<Cl
             min = std::min(time, min);
             max = std::max(time, max);
         }
-        std = sqrt((std / (world_size - 1)));
+        std = sqrt((std / (NProcs - 1)));
 
         // Report the timing stats
         std::cout << "@" << func << ": L" << line << " time stats: ["
@@ -97,9 +101,8 @@ void reportTime(std::chrono::time_point<Clock> start, std::chrono::time_point<Cl
 
 // Generate the initial data locally for each rank
 std::vector<Data> generateData(int nlocal, float umin, float umax, float segment_width, bool iadjacent) {
-    if (world_rank == root_rank) {
-        LOG(world_rank) << "Generating data on all ranks" << std::endl;
-    }
+    Rank0LocalLogger() << "Generating data on all ranks" << std::endl;
+
     auto start = std::chrono::steady_clock::now();
     // Declare vector of data for each rank
     std::vector<Data> data(nlocal);
@@ -111,12 +114,12 @@ std::vector<Data> generateData(int nlocal, float umin, float umax, float segment
 #endif
         // Generate random numbers for the vector entries
         srand(time(NULL));
-        auto seed = rand() * world_rank; // Seed random number generator
+        auto seed = rand() * ThisTask; // Seed random number generator
         std::default_random_engine generator(seed);
         // Get range of unfirom distribution - default is U(0,1)
         if (iadjacent) {
-            umin = std::max(umin, (world_rank - 1) * segment_width);
-            umax = std::min(umax, (world_rank + 2) * segment_width);
+            umin = std::max(umin, (ThisTask - 1) * segment_width);
+            umax = std::min(umax, (ThisTask + 2) * segment_width);
         }
         std::uniform_real_distribution<double> udist(umin, umax);
 
@@ -127,12 +130,12 @@ std::vector<Data> generateData(int nlocal, float umin, float umax, float segment
             for (auto j = 0; j < 3; j++) {
                 data[i].coord[j] = udist(generator);
             }
-            data[i].rank = world_rank;
+            data[i].rank = ThisTask;
         }
 #ifdef _OMP
     }
 #endif
-    LOG(world_rank) << "Has generated data with length " << nlocal << std::endl;
+    Log() << "Rank " << ThisTask << ": Has generated data with length " << nlocal << std::endl;
 
     // Report time taken
     MPI_Barrier(MPI_COMM_WORLD);
@@ -147,23 +150,21 @@ std::vector<Data> generateData(int nlocal, float umin, float umax, float segment
 void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umin, float segment_width, int iblocking,
                       bool iadjacent, bool iverbose, bool idelay, bool irandom) {
     auto comm = MPI_COMM_WORLD;
-    auto ThisTask = world_rank;
-    if (world_rank == root_rank) {
-        LOG(world_rank) << "Redistributing data" << std::endl;
-    }
+    Rank0LocalLogger() << "Redistributing data" << std::endl;
+    
     // Record time taken
     auto start = std::chrono::steady_clock::now();
     // Arrays to hold how many elements each rank sends and receives
     // `nsend[i]` is how many data this rank sends to rank `i`
-    // `nrecv` has size `world_size^2` because each rank needs access to the
+    // `nrecv` has size `NProcs^2` because each rank needs access to the
     // `nsend` of every rank, to determine how many data were sent to it by
     // each rank
-    // So nrecv[0:world_size-1] = nsend_0, nrecv[world_size:2*world_size-1] = nsend_1, etc.
-    std::vector<int> nsend(world_size, 0), nrecv(world_size * world_size, 0);
+    // So nrecv[0:NProcs-1] = nsend_0, nrecv[NProcs:2*NProcs-1] = nsend_1, etc.
+    std::vector<int> nsend(NProcs, 0), nrecv(NProcs * NProcs, 0);
     int total_send = 0, total_recv = 0;
 
     // Divide space of uniform distribution used to generate data
-    // into (approximately) equal segments of width (umax - umin) / world_size
+    // into (approximately) equal segments of width (umax - umin) / NProcs
     // All data values are sent to rank corresponding to their value
     // e.g. U(0, 1) with 10 ranks, means all values in (0.2,0.3) are
     // sent to the third rank (with ID 2)
@@ -171,7 +172,7 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
         // Determine rank each datum will be sent to (based on value of x-coordinate)
         auto new_rank = std::floor(data[i].coord[0] / segment_width);
         data[i].rank = new_rank;
-        if (new_rank != world_rank) // Don't increment nsend and total_send when datum stays on same rank
+        if (new_rank != ThisTask) // Don't increment nsend and total_send when datum stays on same rank
         {
             nsend[new_rank]++;
             total_send++;
@@ -184,8 +185,7 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
     // Sort the data by the rank it is going to be sent to
     // Use lambda to sort by `data.rank`
     std::sort(data.begin(), data.end(), [](const Data &a, const Data &b) { return a.rank < b.rank; });
-    LOG(world_rank) << " Sending " << total_send << " amount of data, requiring "
-                    << static_cast<double>(sizeof(Data) * total_send) / 1024. / 1024. / 1024. << "GB" << std::endl;
+    Log() << "Rank " << ThisTask << ": Sending " << total_send << " amount of data, requiring " <<static_cast<double>(sizeof(Data) * total_send) / 1024. / 1024. / 1024. << "GB" << std::endl;
 
     // Make buffer to hold all the data
     // that is to be sent to other ranks
@@ -203,14 +203,14 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
     // enough info to properly perform the send/receives
     auto p1 = nsend.data();
     auto p2 = nrecv.data();
-    // MPI_Allreduce(p1, p2, world_size, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD);
-    MPI_Allgather(p1, world_size, MPI_INTEGER, p2, world_size, MPI_INTEGER, MPI_COMM_WORLD);
+    // MPI_Allreduce(p1, p2, NProcs, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allgather(p1, NProcs, MPI_INTEGER, p2, NProcs, MPI_INTEGER, MPI_COMM_WORLD);
 
     // Sum up the `nrecv` entries for each rank to get `total_recv`
-    // nrecv[0:world_size-1] = nsend_0, nrecv[world_size:2*world_size-1] = nsend_1, etc.
-    std::vector<int> recv_offsets(world_size);
-    for (auto i = 0; i < world_size; i++) {
-        total_recv += nrecv[world_rank + (i * world_size)];
+    // nrecv[0:NProcs-1] = nsend_0, nrecv[NProcs:2*NProcs-1] = nsend_1, etc.
+    std::vector<int> recv_offsets(NProcs);
+    for (auto i = 0; i < NProcs; i++) {
+        total_recv += nrecv[ThisTask + (i * NProcs)];
     }
     // Make buffer to hold all the data
     // that is to be received from other ranks
@@ -218,20 +218,19 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
     // Set offsets for recv_buffer for each receive
     recv_offsets[0] = 0;
     int total = 0;
-    for (auto i = 1; i < world_size; i++) {
-        total += nrecv[world_rank + ((i - 1) * world_size)];
+    for (auto i = 1; i < NProcs; i++) {
+        total += nrecv[ThisTask + ((i - 1) * NProcs)];
         recv_offsets[i] = total;
     }
 
     // Use verbosity flag for this
     if (iverbose) {
-        LOG(world_rank) << "MPI communication has [total_send, total_recv] = " << total_send << ", " << total_recv
-                        << std::endl;
+	Log() << "Rank " << ThisTask << ": MPI communication has [total_send, total_recv] = " << total_send << ", " << total_recv << std::endl;
     }
 
     // Record mem usage after before sending
-    MPILog0NodeMemUsage(comm);
-    MPILog0NodeSystemMem(comm);
+    MPILog0NodeMemUsage();
+    MPILog0NodeSystemMem();
     // Now we need to actually redistribute
     MPI_Barrier(MPI_COMM_WORLD); // Make sure all ranks are synchronised
     // Adjust `data` vector size to updated value after sending/receiving
@@ -242,31 +241,31 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
     std::vector<MPI_Request> recvreqs;
     // BLOCKING SEND/RECEIVE
     if (iblocking == 0) {
-        for (auto i = 0; i < world_size; i++) {
-            if (i != world_rank) {
-                int tag = i + (world_rank * world_size);
+        for (auto i = 0; i < NProcs; i++) {
+            if (i != ThisTask) {
+                int tag = i + (ThisTask * NProcs);
                 auto send_bytes = nsend[i] * sizeof(Data);
                 auto recv_rank = i;
-                auto send_rank = world_rank;
+                auto send_rank = ThisTask;
                 void *p1 = &send_buffer[send_start];
                 MPI_Send(p1, send_bytes, MPI_BYTE, recv_rank, tag, MPI_COMM_WORLD);
                 if (iverbose) {
-                    LOG(world_rank) << " Sending from " << send_rank << " to " << recv_rank << std::endl;
+		    Log() << "Rank " << ThisTask << ": Sending from " << send_rank << " to " << recv_rank << std::endl;
                 }
                 send_start += nsend[i];
             } else {
                 nlocal -= total_send; // Adjust nlocal to replace old (sent) value with new (received) ones
-                for (auto j = 0; j < world_size; j++) {
-                    if (j != world_rank) {
-                        int tag = world_rank + (j * world_size);
-                        int this_recv = nrecv[i + (j * world_size)];
-                        auto recv_rank = world_rank;
+                for (auto j = 0; j < NProcs; j++) {
+                    if (j != ThisTask) {
+                        int tag = ThisTask + (j * NProcs);
+                        int this_recv = nrecv[i + (j * NProcs)];
+                        auto recv_rank = ThisTask;
                         auto send_rank = j;
                         auto recv_bytes = this_recv * sizeof(Data);
                         void *p2 = &recv_buffer[recv_offsets[j]];
                         MPI_Recv(p2, recv_bytes, MPI_BYTE, send_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                         if (iverbose) {
-                            LOG(world_rank) << " Received on " << recv_rank << " from " << send_rank << std::endl;
+			    Log() << "Rank " << ThisTask << ": Received on " << recv_rank << " from " << send_rank << std::endl;
                         }
                     }
                 }
@@ -278,8 +277,8 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
         // NON-BLOCKING SENDS
         auto nsends = 0, nrecvs = 0;
         std::vector<int> send_ranks;
-        for (auto isend = 0; isend < world_size; isend++) {
-            if (isend != world_rank) {
+        for (auto isend = 0; isend < NProcs; isend++) {
+            if (isend != ThisTask) {
                 send_ranks.push_back(isend);
             }
         }
@@ -289,15 +288,14 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
         }
         if (idelay) {
             MPI_Barrier(MPI_COMM_WORLD);
-            sleep(world_rank * 5);
+            sleep(ThisTask * 5);
         }
         for (auto isend : send_ranks) {
             MPI_Request request;
-            int tag = isend + (world_rank * world_size);
+            int tag = isend + (ThisTask * NProcs);
             auto send_bytes = nsend[isend] * sizeof(Data);
             if (iverbose) {
-                LOG(world_rank) << " Sending " << nsend[isend] << " to " << isend << " and has sent a total of "
-                                << nsends << " messages" << std::endl;
+		Log() << "Rank " << ThisTask << ": Sending " << nsend[isend] << " to " << isend << " and has sent a total of " << nsends << " messages" << std::endl;
             }
             if (send_bytes > 0) {
                 void *p1 = &send_buffer[send_start];
@@ -308,36 +306,33 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
             }
             nsends++;
             if (iverbose) {
-                LOG(world_rank) << " Sent " << nsend[isend] << " to " << isend << " and has sent a total of " << nsends
-                                << " messages" << std::endl;
+		Log() << "Rank " << ThisTask << ": Sent " << nsend[isend] << " ti " << isend << " and has sent a total of " << nsends << " messages" << std::endl;
             }
         }
         if (iverbose) {
-            LOG(world_rank) << " Placed " << nsends << " sends " << std::endl;
+	    Log() << "Rank " << ThisTask << ": Placed " << nsends << " sends " << std::endl;
             MPILogMemUsage();
         }
         // CORRESPONDING NON-BLOCKING RECEIVES
         nlocal -= total_send;
-        for (auto j = 0; j < world_size; j++) {
-            if (j != world_rank) {
+        for (auto j = 0; j < NProcs; j++) {
+            if (j != ThisTask) {
                 MPI_Request request;
-                int tag = world_rank + (j * world_size);
-                int this_recv = nrecv[world_rank + (j * world_size)];
-                auto recv_rank = world_rank;
+                int tag = ThisTask + (j * NProcs);
+                int this_recv = nrecv[ThisTask + (j * NProcs)];
+                auto recv_rank = ThisTask;
                 auto send_rank = j;
                 auto recv_bytes = this_recv * sizeof(Data);
                 if (recv_bytes > 0) {
                     void *p2 = &recv_buffer[recv_offsets[j]];
                     if (iblocking == 1) {
                         if (iverbose) {
-                            LOG(world_rank)
-                                << " Receiving " << this_recv << " receives from " << send_rank << std::endl;
+			    Log() << "Rank " << ThisTask << ": Receiving " << this_recv << " receives from " << send_rank << std::endl;
                         }
                         MPI_Recv(p2, recv_bytes, MPI_BYTE, send_rank, tag, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
                     } else if (iblocking == 2) {
                         if (iverbose) {
-                            LOG(world_rank)
-                                << " Receiving " << this_recv << " receives from " << send_rank << std::endl;
+			    Log() << "Rank " << ThisTask << ": Receiving " << this_recv << " receives from " << send_rank << std::endl;
                         }
                         MPI_Irecv(p2, recv_bytes, MPI_BYTE, send_rank, tag, MPI_COMM_WORLD, &request);
                         MPI_Wait(&request, MPI_STATUSES_IGNORE);
@@ -353,7 +348,7 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
         if (iblocking == 3) {
             MPI_Waitall(recvreqs.size(), recvreqs.data(), MPI_STATUSES_IGNORE);
             if (iverbose) {
-                LOG(world_rank) << " Finished receiving " << nrecvs << " receives " << std::endl;
+		Log() << "Rank " << ThisTask << ": Finished receiving " << nrecvs << " receives " << std::endl;
             }
         }
     }
@@ -364,12 +359,12 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
     }
 
     if (iverbose) {
-        LOG(world_rank) << "Now has " << nlocal << " entries" << std::endl;
+	Log() << "Rank " << ThisTask << ": Now has " << nlocal << " entries" << std::endl;
     }
 
     // Report time taken
-    MPILog0NodeMemUsage(comm);
-    MPILog0NodeSystemMem(comm);
+    MPILog0NodeMemUsage();
+    MPILog0NodeSystemMem();
     MPI_Barrier(MPI_COMM_WORLD);
     auto end = std::chrono::steady_clock::now();
     reportTime(start, end, __func__, std::to_string(__LINE__));
@@ -379,12 +374,12 @@ void redistributeData(std::vector<Data> &data, int nlocal, float umax, float umi
 int main(int argc, char *argv[]) {
     // Initial MPI setup
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    MPI_Comm comm = MPI_COMM_WORLD;
+    MPI_Comm_size(comm, &NProcs);
+    MPI_Comm_rank(comm, &ThisTask);
+    MPISetLoggingComm(comm);
 
     // Report MPI core binding and API (version, etc.)
-    auto comm = MPI_COMM_WORLD;
-    auto ThisTask = world_rank;
     MPILog0ParallelAPI();
     MPILog0Binding();
 
@@ -395,7 +390,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Make sure program is only run if there are multiple ranks
-    if (world_size == 1) {
+    if (NProcs == 1) {
         std::cout << "Error: This program must be run with multiple MPI ranks";
         return 1;
     }
@@ -410,31 +405,28 @@ int main(int argc, char *argv[]) {
     // Bounds of distribution used to generate data entries
     float umin = 0.0;
     float umax = 1.0;
-    float segment_width = (umax - umin) / world_size;
+    float segment_width = (umax - umin) / NProcs;
     // std::cout << "iblocking = " << iblocking << std::endl;
     // Get number of entries for each rank given
     // total data size and no. of ranks
-    int nlocal = ndata / world_size;
+    int nlocal = ndata / NProcs;
     // Handle when nprocs doesn't evenly divide into ndata
     // by assigning leftover data to final rank
-    if (world_rank == world_size - 1) {
-        nlocal = ndata - nlocal * (world_size - 1);
+    if (ThisTask == NProcs - 1) {
+        nlocal = ndata - nlocal * (NProcs - 1);
     }
-    if (world_rank == 0) {
-        LOG(world_rank) << "Generating " << ndata << " in total across comm world and each rank has approximately "
-                        << nlocal << std::endl;
-    }
+    Rank0LocalLogger() << "Generating " << ndata << " in total across comm world and each rank has approximately " << nlocal << std::endl;
 
     // Report node and code memory usage before any data is generated
-    MPILog0NodeMemUsage(comm);
-    MPILog0NodeSystemMem(comm);
+    MPILog0NodeMemUsage();
+    MPILog0NodeSystemMem();
     // Generate data that will be passed between the ranks
     MPI_Barrier(MPI_COMM_WORLD); // Synchronise tasks
     auto data = generateData(nlocal, umin, umax, segment_width, iadjacent);
     MPI_Barrier(MPI_COMM_WORLD); // Synchronise tasks
     // Report node and code memory usage after data generation, but before reistribution
-    MPILog0NodeMemUsage(comm);
-    MPILog0NodeSystemMem(comm);
+    MPILog0NodeMemUsage();
+    MPILog0NodeSystemMem();
     MPI_Barrier(MPI_COMM_WORLD); // Synchronise tasks
 
     // Redistribute the data amongst the ranks
@@ -443,9 +435,7 @@ int main(int argc, char *argv[]) {
     // Message for ReFrame test to make sure that job finished
     auto end = std::chrono::system_clock::now();
     std::time_t end_time = std::chrono::system_clock::to_time_t(end);
-    if (world_rank == root_rank) {
-        std::cout << "Job completed at " << std::ctime(&end_time) << std::endl;
-    }
+    Rank0LocalLogger() << "Job completed at " << std::ctime(&end_time) << std::endl;
 
     MPI_Finalize();
     return 0;

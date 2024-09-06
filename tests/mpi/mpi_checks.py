@@ -36,10 +36,10 @@ class MPI_Comms_Base(rfm.RegressionTest):
         # Set appropriate flags
         self.build_system.cppflags = [
             '-fopenmp', '-O3', '-D_MPI',
-            '-L${PROFILE_UTIL_DIR}/lib',
-            '-I${PROFILE_UTIL_DIR}/include',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include',
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
         ]
         # Build profile util library used by the source code
         self.prebuild_cmds = [
@@ -51,7 +51,7 @@ class MPI_Comms_Base(rfm.RegressionTest):
         ]
 
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -63,6 +63,8 @@ class MPI_Comms_Base(rfm.RegressionTest):
         job_info = get_job_options(config_path)
         self.acct_str = job_info['account']
         self.num_cpus_per_task = 1
+
+        self.tags = {'mpi'}
 
 
     # Set job options for job script
@@ -268,10 +270,10 @@ class CorrectSends(rfm.RegressionTest):
         self.build_system = 'SingleSource'
         self.build_system.cppflags = [
             '-fopenmp', '-O3', '-D_MPI',
-            '-L${PROFILE_UTIL_DIR}/lib',
-            '-I${PROFILE_UTIL_DIR}/include',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include',
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
         ]
         # Build profile util library used by the source code
         self.prebuild_cmds = [
@@ -300,11 +302,13 @@ class CorrectSends(rfm.RegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
             self.prerun_cmds = cmds
+
+        self.tags = {'mpi'}
 
     # Test parameter(s)
     params = get_test_params(config_path, 'CorrectSends')
@@ -430,10 +434,10 @@ class MemoryLeak(rfm.RegressionTest):
         self.build_system = 'SingleSource'
         self.build_system.cppflags = [
             '-fopenmp', '-O3', '-D_MPI',
-            '-L${PROFILE_UTIL_DIR}/lib',
-            '-I${PROFILE_UTIL_DIR}/include',
+            '-L${MPI_LIB}', '-L${PROFILE_UTIL_DIR}/lib',
+            '-I${MPI_INCLUDE}', '-I${PROFILE_UTIL_DIR}/include',
             '-Wl,-rpath=${PROFILE_UTIL_DIR}/lib/',
-            '-lprofile_util_mpi_omp',
+            '-lprofile_util_mpi_omp', '-lmpi'
         ]
         # Build profile util library used by the source code
         self.prebuild_cmds = [
@@ -445,7 +449,7 @@ class MemoryLeak(rfm.RegressionTest):
         ]
         # Compile process tracking program
         flags_str = ' '.join(self.build_system.cppflags)
-        self.prebuild_cmds += ['CC ' + flags_str + ' get_running_procs.cpp -o get_running_procs.out']
+        self.prebuild_cmds += ['g++ ' + flags_str + ' get_running_procs.cpp -o get_running_procs.out']
 
         # Executable
         self.executable = 'mpi-comms.out'
@@ -464,7 +468,7 @@ class MemoryLeak(rfm.RegressionTest):
 
         # Set up environment (any environment variables to set, prerun_cmds, and/or modules to load)
         env_vars, modules, cmds = set_env(config_path)
-        self.variables = env_vars
+        self.env_vars = env_vars
         if modules != []:
             self.modules = modules
         if cmds != []:
@@ -472,14 +476,16 @@ class MemoryLeak(rfm.RegressionTest):
 
 
         # Cadence of memory reporting (in seconds)
-        self.cadence = test_config['cadence']
+        #self.cadence = test_config['cadence']
         # Run memory tracking program as a simultaneous job step alongside main MPI comms program
         self.postrun_cmds = [
             f'srun --exact -N {self.num_nodes} -n {self.num_nodes} --ntasks-per-node=1 -c {self.num_cpus_per_task} --mem={self.mem_per_cpu} '
-            + f'./get_running_procs.out {self.cadence} {self.num_tasks - self.num_nodes} >> mem_reports.log &', 
+            + f'./get_running_procs.out {self.num_tasks - self.num_nodes} >> mem_reports.log &', 
             'wait',
             f'python3 parse_memory.py -n {self.num_tasks} -N {self.num_nodes} -f mem_reports.log',
         ]
+
+        self.tags = {'mpi'}
 
     # Test parameter(s)
     params = get_test_params(config_path, 'MemoryLeak')
@@ -514,7 +520,7 @@ class MemoryLeak(rfm.RegressionTest):
     @sanity_function
     def assert_complete(self):
         # Get nodes running processes
-        nodes = sn.evaluate(sn.findall(r'Running on node\s(\w+)', 'mem_reports.log'))
+        nodes = sn.evaluate(sn.findall(r'Running on node\s([\w.-]+)', 'mem_reports.log'))
         passfail_list = [False for _ in range(self.num_nodes)]
         # Iterate through the nodes
         for inode in range(self.num_nodes):

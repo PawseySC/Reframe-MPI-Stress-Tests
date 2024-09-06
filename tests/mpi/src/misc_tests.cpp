@@ -16,9 +16,15 @@
 // Not recognised when using craype-network-ucx
 #include <mpi.h>
 
-// Prepend log statements with the rank being called as well as function and line number of calling statement
-#define LOG(ThisTask)                                                                                                  \
-    std::cout << _MPI_calling_rank(ThisTask) << "@" << __func__ << " L" << __LINE__ << " (" << getcurtime() << ") : "
+int ThisTask, NProcs;
+
+#define Rank0LocalLogger() if (ThisTask==0) Log()
+#define LogMPITest() Rank0LocalLogger()<<" running "<<mpifunc<< " test"<<std::endl;
+#define LogMPIBroadcaster() if (ThisTask == itask) Log()<<" running "<<mpifunc<<" broadcasting "<<sendsize<<" GB"<<std::endl;
+#define LogMPISender() Log()<<" Running "<<mpifunc<<" sending "<<sendsize<<" GB"<<std::endl;
+#define LogMPIReceiver() if (ThisTask == itask) Log()<<" running "<<mpifunc<<std::endl;
+#define LogMPIAllComm() Rank0LocalLogger()<<" running "<<mpifunc<<" all "<<sendsize<<" GB"<<std::endl;
+#define Rank0ReportMem() if (ThisTask==0) {LogMemUsage();LogSystemMem();}
 
 // Report the current time
 std::string getcurtime() {
@@ -31,7 +37,6 @@ std::string getcurtime() {
 
 // Global variables relating to the MPI communicator and world
 // Rank number, world, size, and root rank
-int world_rank, world_size;
 int root_rank = 0;
 
 void sendToRoot(std::vector<double> &data, int &nlocal, int delay_rank, int delay_time) {
@@ -40,40 +45,43 @@ void sendToRoot(std::vector<double> &data, int &nlocal, int delay_rank, int dela
 
     // Add a delay to all ranks but one, such that one
     // rank has a long delay between recv and send
-    if (world_rank != delay_rank) {
+    if (ThisTask != delay_rank) {
         sleep(delay_time);
     }
 
     // Root rank receives data from all other ranks
-    if (world_rank == root_rank) {
-        for (auto irank = 0; irank < world_size; irank++) {
+    if (ThisTask == root_rank) {
+        for (auto irank = 0; irank < NProcs; irank++) {
             if (irank != root_rank) {
-                LOG(world_rank) << "Receiving " << nlocal << " data from " << irank << std::endl;
+		Log() << "Rank " << ThisTask << ": Receiving " << nlocal << " data from " << irank << std::endl;
+                //LOG(ThisTask) << "Receiving " << nlocal << " data from " << irank << std::endl;
                 MPI_Recv(&nlocal, 1, MPI_INT, irank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 data.resize(nlocal);
                 p = data.data();
                 MPI_Recv(p, nlocal, MPI_DOUBLE, irank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                LOG(world_rank) << "Received " << nlocal << " data from " << irank << std::endl;
+		Log() << "Rank " << ThisTask << ": Received " << nlocal << " data from " << irank << std::endl;
+                //LOG(ThisTask) << "Received " << nlocal << " data from " << irank << std::endl;
             }
         }
     }
     // All non-root ranks send their data to the root rank
     else {
-        LOG(world_rank) << "Sending " << nlocal << " data to " << root_rank << std::endl;
+	Log() << "Rank " << ThisTask << ": Sending " << nlocal << " data to " << root_rank << std::endl;
+        //LOG(ThisTask) << "Sending " << nlocal << " data to " << root_rank << std::endl;
         nlocal = data.size();
         p = data.data();
         MPI_Send(&nlocal, 1, MPI_INT, root_rank, 0, MPI_COMM_WORLD);
         MPI_Send(p, nlocal, MPI_DOUBLE, root_rank, 0, MPI_COMM_WORLD);
-        LOG(world_rank) << "Sent " << nlocal << " data to " << root_rank << std::endl;
+	Log() << "Rank " << ThisTask << ": Sent " << nlocal << " data to " << root_rank << std::endl;
+        //LOG(ThisTask) << "Sent " << nlocal << " data to " << root_rank << std::endl;
     }
     p = nullptr;
 }
 
 // Generate the data locally for each rank
 std::vector<double> generateData(int nlocal, float umin, float umax, float segment_width) {
-    if (world_rank == root_rank) {
-        LOG(world_rank) << "Generating data on all ranks" << std::endl;
-    }
+    Rank0LocalLogger() << "Generating data on all ranks" << std::endl;
+
     // Declare vector of data for each rank
     std::vector<double> data(nlocal);
 
@@ -84,7 +92,7 @@ std::vector<double> generateData(int nlocal, float umin, float umax, float segme
 #endif
         // Generate random numbers for the vector entries
         srand(time(NULL));
-        auto seed = rand() * world_rank; // Seed random number generator
+        auto seed = rand() * ThisTask; // Seed random number generator
         std::default_random_engine generator(seed);
         // Get range of uniform distribution - default is U(0,1)
         std::uniform_real_distribution<double> udist(umin, umax);
@@ -96,9 +104,7 @@ std::vector<double> generateData(int nlocal, float umin, float umax, float segme
             data[i] = udist(generator);
         }
 
-        if (world_rank == root_rank) {
-            LOG(world_rank) << "Has generated data of length " << nlocal << std::endl;
-        }
+	Rank0LocalLogger() << "Has generated data of length " << nlocal << std::endl;
 #ifdef _OMP
     }
 #endif
@@ -118,21 +124,23 @@ void correctSends(int ndata, std::string send_mode) {
     int size = ndata;
     std::vector<double> data(size);
     for (auto &datum : data) {
-        datum = world_rank;
+        datum = ThisTask;
     }
 
     // Root rank receives data from all other ranks
-    if (world_rank == root_rank) {
-        for (auto irank = 0; irank < world_size; irank++) {
+    if (ThisTask == root_rank) {
+        for (auto irank = 0; irank < NProcs; irank++) {
             // Record current size to compare to size after send
             auto old_size = size;
             if (irank != root_rank) {
-                LOG(world_rank) << "Receiving " << size << " data from " << irank << std::endl;
+                Log() << "Rank " << ThisTask << ": Receiving " << size << " data from " << irank << std::endl;
                 // Send size of vector
                 MPI_Recv(&ndata, 1, MPI_INT, irank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                LOG(world_rank) << "Received " << size << " data from " << irank << std::endl;
+		Log() << "Rank " << ThisTask << ": Received " << size << " data from " << irank << std::endl;
+                //LOG(ThisTask) << "Received " << size << " data from " << irank << std::endl;
                 if (size != old_size) {
-                    LOG(world_rank) << "RECEIVED WRONG VALUE FOR `size` FROM " << irank << std::endl;
+		    Log() << "Rank " << ThisTask << ": RECEIVED WRONG VALUE FOR `size` FROM " << irank << std::endl;
+                    //LOG(ThisTask) << "RECEIVED WRONG VALUE FOR `size` FROM " << irank << std::endl;
                     break;
                     // MPI_Abort(MPI_COMM_WORLD)
                 }
@@ -147,8 +155,9 @@ void correctSends(int ndata, std::string send_mode) {
                 }
                 for (auto i = 0; i < old_size; i++) {
                     if (old_data[i] != data[i]) {
-                        LOG(world_rank) << "RECEIVED WRONG VALUE AT INDEX " << i << " OF `data` VECTOR FROM " << irank
-                                        << std::endl;
+			Log() << "Rank " << ThisTask << ": RECEIVED WRONG VALUE AT INDEX " << i << " OF `data` VECTOR FROM " << irank << std::endl;
+                        //LOG(ThisTask) << "RECEIVED WRONG VALUE AT INDEX " << i << " OF `data` VECTOR FROM " << irank
+                        //                << std::endl;
                         break;
                         // MPI_Abort
                     }
@@ -158,7 +167,8 @@ void correctSends(int ndata, std::string send_mode) {
     }
     // All non-root ranks send data to root rank
     else {
-        LOG(world_rank) << "Sending " << size << " data to " << root_rank << std::endl;
+	Log() << "Rank " << ThisTask << ": Sending " << size << " data to " << root_rank << std::endl;
+        //LOG(ThisTask) << "Sending " << size << " data to " << root_rank << std::endl;
         size = data.size();
         p = data.data();
         // Test the different types of MPI sends
@@ -175,7 +185,8 @@ void correctSends(int ndata, std::string send_mode) {
             MPI_Ssend(&size, 1, MPI_INT, root_rank, 0, MPI_COMM_WORLD);
             MPI_Ssend(p, size, MPI_DOUBLE, root_rank, 0, MPI_COMM_WORLD);
         }
-        LOG(world_rank) << "Sent " << size << " data to " << root_rank << std::endl;
+	Log() << "Rank " << ThisTask << ": Sent " << size << " data to " << root_rank << std::endl;
+        //LOG(ThisTask) << "Sent " << size << " data to " << root_rank << std::endl;
     }
     // Clear memory reserved for `data`
     data.clear();
@@ -186,15 +197,15 @@ void correctSends(int ndata, std::string send_mode) {
 int main(int argc, char *argv[]) {
     // Initial MPI setup
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &NProcs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
 
     // Ensure program is called with right number of arguments
     // The number of arguments depends on the mode in which
     // the program is called
     std::string mode = argv[2];
     std::transform(mode.begin(), mode.end(), mode.begin(), toupper);
-    if (world_rank == root_rank) {
+    if (ThisTask == root_rank) {
         if (mode == "HANGING") {
             if (argc < 5) {
                 std::cout << "Usage: misc_tests.out ndata HANGING delay_rank delay_time" << std::endl;
@@ -211,7 +222,7 @@ int main(int argc, char *argv[]) {
         }
     }
     // Ensure program is called with at least 2 MPI ranks
-    if (world_size == 1) {
+    if (NProcs == 1) {
         std::cout << "Error: This program must be run with at least 2 MPI ranks" << std::endl;
         return 1;
     }
@@ -223,7 +234,7 @@ int main(int argc, char *argv[]) {
         int ndata = pow(atoi(argv[1]), 3);
         int delay_rank = atoi(argv[3]);
         int delay_time = atoi(argv[4]);
-        if (world_rank == root_rank) {
+        if (ThisTask == root_rank) {
             std::cout << "Data size is " << ndata << std::endl;
         }
 
@@ -231,15 +242,15 @@ int main(int argc, char *argv[]) {
         float umin = 0.0;
         float umax = 1.0;
         // Width of data region for each rank
-        float segment_width = (umax - umin) / world_size;
+        float segment_width = (umax - umin) / NProcs;
 
         // Get number of entries for each rank given
         // total data size and no. of ranks
-        int nlocal = ndata / world_size;
+        int nlocal = ndata / NProcs;
         // Handle when world_size doesn't evenly divide into
         // ndata by assigning leftover data to final rank
-        if (world_rank == world_size - 1) {
-            nlocal = ndata - nlocal * (world_size - 1);
+        if (ThisTask == NProcs - 1) {
+            nlocal = ndata - nlocal * (NProcs - 1);
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
@@ -263,7 +274,7 @@ int main(int argc, char *argv[]) {
     // Message for ReFrame test to make sure that job finished
     auto end = std::chrono::system_clock::now();
     std::time_t end_time = std::chrono::system_clock::to_time_t(end);
-    if (world_rank == root_rank) {
+    if (ThisTask == root_rank) {
         std::cout << "Job completed at " << std::ctime(&end_time) << std::endl;
     }
 

@@ -5,7 +5,7 @@
 # System level parameters required for the Reframe tests
 system-parameters: 
   system: # Value for valid_systems in Reframe test class
-    - setonix:work
+    - ella:gpu
   prog-environ: # Value for valid_prog_environs in Reframe test class
     - PrgEnv-gnu
 # Configure the environment
@@ -13,7 +13,7 @@ environment:
   # MPI-related environment settings
   mpi:
     # Any modules to load
-    modules: ~
+    modules: [mpi/mpich-aarch64]
     # Any commands to execute to configure environment
     commands: ~
     # Environment variables
@@ -40,7 +40,7 @@ Pt2Pt:
   performance:
     reference-value: 2.e+06
   test-parameters:
-    num-nodes: [1, 2, 4, 8, 16, 32]
+    num-nodes: [1] #, 2, 4]
 
 # Specific for CollectiveComms test
 CollectiveComms:
@@ -56,7 +56,7 @@ CollectiveComms:
       distribute: 1.5e+06
       reduce: 6.e+03
   test-parameters:
-    num-nodes: [1, 2, 4, 8, 16, 32]
+    num-nodes: [1, 2, 4]
 
 # Specific for DelayHang test
 # NOTE:These specific values replicate the bug on Setonix
@@ -98,7 +98,7 @@ LargeCommHang:
     exclusive: True
     time-limit: 300 # seconds
   test-parameters:
-    num-tasks-per-node: [85, 86]
+    num-tasks-per-node: [85, 86] # Need to reduce this to fit in ella setup, will likely need to increase ndata, etc. to compensate to trigger issue
 
 # Specific for LargeCommLibfabric test
 # NOTE: These specific values replicate the bug on Setonix
@@ -115,17 +115,17 @@ LargeCommLibfabric:
     exclusive: True
     time-limit: 300 # seconds
   test-parameters:
-    num-tasks-per-node: [149, 150]
+    num-tasks-per-node: [149, 150] # Need to reduce this to fit in ella setup, will likely need to increase ndata, etc. to compensate to trigger issue
 
 # Specific for MemoryLeak test
 MemoryLeak:
   executable-options:
-    ndata: '300'
+    ndata: '200'
     iverbose: '1'
   job-options:
-    mem-per-cpu: 1840 # MB
+    mem-per-cpu: 650 # MB
     exclusive: True
-  cadence: 1.0 # Seconds
+  #cadence: 1.0 # Seconds
   test-parameters:
-    num-nodes: [1, 2, 4, 8, 16, 32]
+    num-nodes: [1, 2, 4]
     num-tasks-per-node: 24
