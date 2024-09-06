@@ -28,9 +28,15 @@ site_configuration = {
                     'launcher': 'srun',
                     'modules': [],
                     'access': ['--partition=gpu'],
-                    'max_jobs': 1,
+                    'max_jobs': 2,
                     'environs': ['PrgEnv-gnu'],
                     'descr': 'Ella GPU partition',
+                    'processor': {
+                        'num_cpus': 72,
+                        'num_cpus_per_core': 1,
+                        'num_cpus_per_socket': 72,
+                        'num_sockets': 1
+                    },
                 },
             ]
         },
