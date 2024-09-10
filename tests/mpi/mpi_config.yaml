@@ -2,12 +2,6 @@
 # ------------------- #
 # COMMON TO ALL TESTS #
 # ------------------- #
-# System level parameters required for the Reframe tests
-system-parameters: 
-  system: # Value for valid_systems in Reframe test class
-    - ella:gpu
-  prog-environ: # Value for valid_prog_environs in Reframe test class
-    - PrgEnv-gnu
 # Configure the environment
 environment:
   # MPI-related environment settings
@@ -28,6 +22,11 @@ job-options:
 
 # Specifics for Pt2Pt test
 Pt2Pt:
+  system-parameters:
+    system:
+      - ella:gpu
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '512'
     iadjacent: '0'
@@ -44,6 +43,11 @@ Pt2Pt:
 
 # Specific for CollectiveComms test
 CollectiveComms:
+  system-parameters:
+    system:
+      - ella:gpu
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '100'
     iverbose: '1'
@@ -61,6 +65,11 @@ CollectiveComms:
 # Specific for DelayHang test
 # NOTE:These specific values replicate the bug on Setonix
 DelayHang:
+  system-parameters:
+    system:
+      - ella:gpu
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '512'
     mode: 'HANGING'
@@ -73,6 +82,11 @@ DelayHang:
 # Specific for CorrectSends test
 # NOTE: These specific values replicate the bug on Setonix
 CorrectSends:
+  system-parameters:
+    system:
+      - ella:gpu
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '100'
     mode: 'CORRECT_SENDS'
@@ -86,6 +100,11 @@ CorrectSends:
 # Specific for LargeCommHang test
 # NOTE: These specific values replicate the bug on Setonix
 LargeCommHang:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '1024'
     iadjacent: '0'
@@ -103,6 +122,11 @@ LargeCommHang:
 # Specific for LargeCommLibfabric test
 # NOTE: These specific values replicate the bug on Setonix
 LargeCommLibfabric:
+  system-parameters:
+    system:
+      - setonix:work
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '128'
     iadjacent: '0'
@@ -119,6 +143,11 @@ LargeCommLibfabric:
 
 # Specific for MemoryLeak test
 MemoryLeak:
+  system-parameters:
+    system:
+      - ella:gpu
+    prog-environ:
+      - PrgEnv-gnu
   executable-options:
     ndata: '200'
     iverbose: '1'

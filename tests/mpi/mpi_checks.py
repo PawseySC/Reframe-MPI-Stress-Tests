@@ -22,10 +22,10 @@ config_path = curr_dir + '/mpi_config.yaml'
 class MPI_Comms_Base(rfm.RegressionTest):
     def __init__(self, name, **kwargs):
 
-        sys_info = set_system(config_path)
+        #sys_info = set_system(config_path)
         # Valid systems and PEs test will run on
-        self.valid_systems = [s for s in sys_info['system']]
-        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+        #self.valid_systems = [s for s in sys_info['system']]
+        #self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Metadata
         self.descr = 'Performance scaling test for MPI communcation'
@@ -101,6 +101,10 @@ class Pt2Pt(MPI_Comms_Base):
         # Metadata
         self.description = 'Performance/scaling test for MPI point-to-point communication'
 
+        sys_info = set_system(config_path, 'Pt2Pt')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+
         # Get test-specific configuration
         test_config = configure_test(config_path, 'Pt2Pt')
 
@@ -150,6 +154,10 @@ class CollectiveComms(MPI_Comms_Base):
 
         # Metadata
         self.descr = 'Performance/scaling test for MPI collective communication'
+
+        sys_info = set_system(config_path, 'CollectiveComms')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Get test-specific configuration
         test_config = configure_test(config_path, 'CollectiveComms')
@@ -230,6 +238,10 @@ class DelayHang(MPI_Comms_Base):
         # Metadata
         self.descr = 'Test to check MPI hangs observed in ASKAP workflow'
 
+        sys_info = set_system(config_path, 'DelayHang')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+
         # Get test-specific configuration
         test_config = configure_test(config_path, 'DelayHang')
 
@@ -251,16 +263,15 @@ class DelayHang(MPI_Comms_Base):
 # Test employing ucx library
 @rfm.simple_test
 class CorrectSends(rfm.RegressionTest):
-    def __init__(self):
-        
-        sys_info = set_system(config_path)
-        # Valid systems and PEs test will run on
-        self.valid_systems = [s for s in sys_info['system']]
-        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+    def __init__(self): 
 
         # Metadata
         self.descr = 'Test to check MPI sends are correct'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
+
+        sys_info = set_system(config_path, 'CorrectSends')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Get test-specific configuration
         test_config = configure_test(config_path, 'CorrectSends')
@@ -362,6 +373,10 @@ class LargeCommHang(MPI_Comms_Base):
         # Metadata
         self.descr = 'Test for large comm-world hang with MPI codes'
 
+        sys_info = set_system(config_path, 'LargeCommHang')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
+
         # Get test-specific configuration
         test_config = configure_test(config_path, 'LargeCommHang')
 
@@ -389,6 +404,10 @@ class LargeCommLibfabric(MPI_Comms_Base):
         super().__init__('LargeCommHang', **kwargs)
 
         self.descr = 'Test for large MPI comm-world libfabric error'
+
+        sys_info = set_system(config_path, 'LargeCommLibfabric')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
         
         # Get test-specific configuration
         test_config = configure_test(config_path, 'LargeCommLibfabric')
@@ -417,14 +436,13 @@ class LargeCommLibfabric(MPI_Comms_Base):
 class MemoryLeak(rfm.RegressionTest):
     def __init__(self):
 
-        sys_info = set_system(config_path)
-        # Valid systems and PEs test will run on
-        self.valid_systems = [s for s in sys_info['system']]
-        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
-
         # Metadata
         self.descr = 'Test memory sampling/reporting during MPI comms'
         self.maintainers = ['Craig Meyer', 'Pascal Jahan Elahi']
+
+        sys_info = set_system(config_path, 'MemoryLeak')
+        self.valid_systems = [s for s in sys_info['system']]
+        self.valid_prog_environs = [pe for pe in sys_info['prog-environ']]
 
         # Get test-specific configuration
         test_config = configure_test(config_path, 'MemoryLeak')
