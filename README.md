@@ -11,7 +11,7 @@ A collection of MPI tests. These tests cover various types of MPI communication 
 
 ### SLURM
 
-A collection of SLURM tests. These tests cover particular issues, problems, and strange behaviour we have seen with our SLURM installation(s), so may not be as widely applicable on other sysrtems as the MPI and compilation/performance tests. Nevertheless, they serve as an example of the type of tests which could be used to monitor certain aspects of a centre's SLURM installation. These tests cover resource allocation vs. request (i.e. ensuring what a user asks for in terms of accessible memory, cores, etc. is what is actually provided to them), account billing, affinity of OMP threads and MPI processes, and node configuration with respect to SLURM config.
+A collection of SLURM tests. These tests cover particular issues, problems, and strange behaviour we have seen with our SLURM installation(s), so may not be as widely applicable on other systems as the MPI and compilation/performance tests. Nevertheless, they serve as an example of the type of tests which could be used to monitor certain aspects of a centre's SLURM installation. These tests cover resource allocation vs. request (i.e. ensuring what a user asks for in terms of accessible memory, cores, etc. is what is actually provided to them), account billing, affinity of OMP threads and MPI processes, and node configuration with respect to SLURM config.
 
 The CPU and GPU nodes on our system have different hardware and setups, and as such the SLURM setup on the two sets of nodes is not the same. Therefore, as with the MPI tests, we have tests for SLURM use on both CPU and GPU nodes.
 
